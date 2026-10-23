@@ -1,0 +1,1587 @@
+<!doctype html>
+<html lang="en"><head><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><style>html,body{margin:0}[hidden]{display:none!important}</style></head><body>
+<meta charset="utf-8">
+<title>Spatial London</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400..800&display=swap">
+<style>
+@property --pop { syntax: '<number>'; inherits: true; initial-value: 0; }
+@property --pp { syntax: '<number>'; inherits: false; initial-value: 0; }
+@property --dx { syntax: '<number>'; inherits: true; initial-value: 0; }
+
+/* Layout: Apple spatial wallpaper. Blurred photo fills the screen, one depth card floats centre,
+   a glass platter carries the label and the iOS page control. Dark appearance only, like visionOS. */
+:root {
+  --label: #ffffff;
+  --label-2: rgba(235, 235, 245, .62);
+  --label-3: rgba(235, 235, 245, .32);
+  --separator: rgba(255, 255, 255, .16);
+  --fill: rgba(120, 120, 128, .24);
+  --glass: rgba(40, 40, 46, .38);
+  --glass-edge: rgba(255, 255, 255, .22);
+  --tint: #0a84ff;
+  --ground: #000000;
+  --sf: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", "Inter", system-ui, "Segoe UI", sans-serif;
+  --sf-display: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Inter", system-ui, "Segoe UI", sans-serif;
+  --sf-mono: ui-monospace, "SF Mono", "Cascadia Mono", Menlo, monospace;
+  color-scheme: dark;
+}
+html, body { height: 100%; }
+[hidden] { display: none !important; }
+body {
+  background: var(--ground);
+  color: var(--label);
+  font: 400 15px/1.4 var(--sf);
+  -webkit-font-smoothing: antialiased;
+  overflow-x: hidden;
+  letter-spacing: -.01em;
+}
+.wallpaper { position: fixed; inset: -60px; z-index: -2; pointer-events: none; }
+.wallpaper img {
+  position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover;
+  filter: blur(48px) saturate(1.5) brightness(.62); transform: scale(1.22);
+  opacity: 0; transition: opacity 1.1s ease, transform 2.4s cubic-bezier(.22, 1, .36, 1);
+}
+.wallpaper img.on { opacity: 1; transform: scale(1.1); }
+.wallpaper::after { content: ""; position: absolute; inset: 0; background: radial-gradient(80% 70% at 50% 40%, transparent, rgba(0,0,0,.55)); }
+
+.app {
+  box-sizing: border-box; min-height: 100%;
+  display: grid; grid-template-rows: auto minmax(300px, 1fr) auto; gap: 10px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 14px 16px;
+}
+
+/* glass material */
+.glass {
+  background: var(--glass);
+  -webkit-backdrop-filter: blur(30px) saturate(180%);
+  backdrop-filter: blur(30px) saturate(180%);
+  border: .5px solid var(--glass-edge);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.12), 0 10px 30px rgba(0,0,0,.25);
+}
+
+/* toolbar */
+.toolbar { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+.title { display: flex; align-items: baseline; gap: 10px; min-width: 0; }
+.title h1 { margin: 0; font: 700 22px/1.2 var(--sf-display); letter-spacing: -.02em; }
+.title span { color: var(--label-2); font-size: 13px; }
+.controls { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.status { display: inline-flex; align-items: center; gap: 7px; height: 32px; padding: 0 12px; border-radius: 16px; font-size: 13px; color: var(--label-2); }
+.status b { color: var(--label); font-weight: 600; }
+.status i { width: 7px; height: 7px; border-radius: 50%; background: #30d158; box-shadow: 0 0 8px #30d158; }
+.capsule {
+  height: 32px; padding: 0 14px; border-radius: 16px; cursor: pointer;
+  display: inline-flex; align-items: center; gap: 7px;
+  font: 600 13px/1 var(--sf); color: var(--label);
+}
+.capsule:hover { background: rgba(80, 80, 90, .5); }
+.capsule[aria-pressed="true"] { background: var(--tint); border-color: transparent; }
+.capsule svg { width: 15px; height: 15px; }
+.capsule:focus-visible, .nav:focus-visible, .dot:focus-visible, .credit a:focus-visible { outline: 3px solid rgba(10,132,255,.7); outline-offset: 2px; }
+#camPreview { width: 24px; height: 18px; border-radius: 4px; }
+.note a { color: #64d2ff; }
+.note { flex-basis: 100%; margin: 0; font-size: 13px; color: var(--label-2); text-align: right; }
+
+/* stage + depth cards */
+.stage {
+  position: relative; overflow: hidden; touch-action: pan-y; cursor: grab;
+  user-select: none; -webkit-user-select: none;
+  perspective: calc(var(--cw, 800px) * 1.6); perspective-origin: 50% 50%;
+  margin-inline: calc(-1 * max(16px, env(safe-area-inset-left, 0px)));
+}
+.stage.grabbing { cursor: grabbing; }
+.card {
+  position: absolute; left: 50%; top: 50%;
+  width: var(--cw, 800px); height: var(--ch, 500px);
+  margin-left: calc(var(--cw, 800px) / -2); margin-top: calc(var(--ch, 500px) / -2 + var(--lift, 0px));
+  transform-style: preserve-3d;
+  transition: transform .95s cubic-bezier(.22, 1, .36, 1), opacity .7s ease, --pop 1.2s cubic-bezier(.3, 1.4, .5, 1), --dx .7s cubic-bezier(.22, 1, .36, 1);
+}
+.card.is-active { --pop: 1; }
+.card.dragging { transition: --pop 1.2s cubic-bezier(.3, 1.4, .5, 1); }
+.card.dragging .plane { transition: none; }
+.rig { position: absolute; inset: 0; transform-style: preserve-3d; will-change: transform; }
+/* each plane moves forward but shrinks to match, so at rest the photo lines up; tilting pulls them apart */
+.plane {
+  position: absolute; inset: 0; pointer-events: none;
+  transform: translateX(calc(var(--dx) * var(--z) * var(--u, .8) * -.9px)) translateZ(calc(var(--z) * var(--u, .8) * var(--pp) * 1px)) scale(calc(1 - var(--z) * var(--pp) / 1600));
+  transition: --pp .45s cubic-bezier(.4, 0, .2, 1);
+}
+.card.is-active .plane { --pp: 1; transition: --pp 1.05s cubic-bezier(.34, 1.5, .5, 1) calc(.18s + var(--i, 0) * 90ms); }
+.plane svg { width: 100%; height: 100%; display: block; overflow: visible; }
+.plane[data-plane="title"] { filter: drop-shadow(0 calc(var(--u, .8) * 3px) calc(var(--u, .8) * 14px) rgba(0, 0, 0, .35)); }
+.plane.lift { filter: drop-shadow(0 calc(var(--u, .8) * 10px) calc(var(--u, .8) * 14px) rgba(0, 0, 0, .38)); }
+.edge {
+  position: absolute; inset: 0; border-radius: 4.6% / 7.4%;
+  box-shadow: 0 calc(var(--u, .8) * 30px) calc(var(--u, .8) * 80px) rgba(0,0,0,.55), inset 0 0 0 1px rgba(255,255,255,.18);
+  transform: translateZ(-1px);
+}
+.sheen::after {
+  content: ""; position: absolute; inset: 0; border-radius: inherit; opacity: 0;
+  background: linear-gradient(105deg, transparent 38%, rgba(255,255,255,.28) 50%, transparent 62%) no-repeat;
+  background-size: 250% 100%; background-position: 130% 0;
+}
+.card.landing .sheen::after { animation: glint 1.3s cubic-bezier(.4, 0, .2, 1) .45s; }
+@keyframes glint { 0% { opacity: 0; background-position: 130% 0; } 20% { opacity: 1; } 100% { opacity: 0; background-position: -40% 0; } }
+.sheen {
+  position: absolute; inset: 0; pointer-events: none; border-radius: 4.6% / 7.4%;
+  transform: translateZ(calc(var(--u, .8) * 230px * var(--pop))) scale(calc(1 - 230 * var(--pop) / 1600));
+  background: radial-gradient(50% 60% at var(--sx, 30%) var(--sy, 20%), rgba(255,255,255,.14), rgba(255,255,255,0) 70%);
+  opacity: var(--pop);
+}
+.nav {
+  position: absolute; top: 50%; z-index: 5; width: 44px; height: 44px; margin-top: -22px; padding: 0;
+  border-radius: 50%; display: grid; place-items: center; cursor: pointer; color: var(--label);
+}
+.nav:disabled { opacity: .3; cursor: default; }
+.nav.prev { left: max(16px, env(safe-area-inset-left, 0px)); }
+.nav.next { right: max(16px, env(safe-area-inset-right, 0px)); }
+.nav svg { width: 17px; height: 17px; }
+
+/* platter */
+.platter {
+  max-width: 980px; width: 100%; margin-inline: auto; box-sizing: border-box;
+  border-radius: 26px; padding: 18px 22px 14px;
+  display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr); gap: 6px 28px;
+}
+.platter > * { min-width: 0; transition: opacity .3s ease, transform .3s ease; }
+.platter.swap .fade { opacity: 0; transform: translateX(calc(var(--sd, 1) * -22px)); }
+.platter.enter .fade { opacity: 0; transform: translateX(calc(var(--sd, 1) * 22px)); transition: none; }
+.eyebrow { font: 600 12px/1.3 var(--sf); color: var(--label-2); text-transform: uppercase; letter-spacing: .04em; }
+.name { margin: 2px 0 4px; font: 700 clamp(26px, 3.2vw, 34px)/1.12 var(--sf-display); letter-spacing: -.025em; text-wrap: balance; }
+.sub { font-size: 15px; color: var(--label-2); }
+.rows { display: grid; gap: 0; margin: 0; border-radius: 12px; overflow: hidden; background: var(--fill); }
+.rows div { display: flex; justify-content: space-between; gap: 16px; padding: 9px 14px; border-bottom: .5px solid var(--separator); }
+.rows div:last-child { border-bottom: 0; }
+.rows dt { color: var(--label-2); font-size: 15px; }
+.rows dd { margin: 0; font-size: 15px; text-align: right; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.fact { margin: 10px 0 0; font-size: 15px; line-height: 1.45; color: rgba(255,255,255,.86); max-width: 62ch; }
+.foot { grid-column: 1 / -1; display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; padding-top: 10px; margin-top: 6px; border-top: .5px solid var(--separator); }
+.credit { font-size: 11px; color: var(--label-3); min-width: 0; }
+.credit a { color: var(--label-2); text-decoration: none; }
+.credit a:hover { text-decoration: underline; }
+.pager { display: flex; align-items: center; gap: 2px; padding: 6px 8px; border-radius: 14px; background: rgba(0,0,0,.25); }
+.dot { width: 22px; height: 22px; padding: 0; border: 0; background: none; display: grid; place-items: center; cursor: pointer; }
+.dot span { width: 7px; height: 7px; border-radius: 4px; background: rgba(255,255,255,.35); transition: width .35s cubic-bezier(.2,.8,.2,1), background .35s; }
+.dot[aria-current="true"] { width: 34px; }
+.dot[aria-current="true"] span { width: 22px; background: #fff; }
+.hint { font-size: 12px; color: var(--label-3); }
+
+/* pins on the card */
+.pins circle { fill: rgba(255,255,255,.94); stroke: rgba(0,0,0,.18); stroke-width: 1; }
+.pins text { font: 700 26px var(--sf); fill: #000; }
+.pins .ring { fill: none; stroke: rgba(255,255,255,.55); stroke-width: 2; }
+.stage.no-pins .pins, .card:not(.is-active) .pins { opacity: 0; pointer-events: none; }
+.card:not(.is-active) .pins .pin-hit { pointer-events: none; }
+.pins { transition: opacity .3s; }
+.platter .more { margin-top: 12px; text-decoration: none; width: fit-content; }
+html { scroll-behavior: smooth; }
+@media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+
+/* story */
+.story { max-width: 1080px; margin: 0 auto; box-sizing: border-box;
+  padding: 72px max(16px, env(safe-area-inset-right, 0px)) 96px max(16px, env(safe-area-inset-left, 0px));
+  display: grid; gap: 72px; }
+.story section { display: grid; gap: 22px; min-width: 0; }
+.kicker { font: 600 13px/1.3 var(--sf); color: var(--label-2); text-transform: uppercase; letter-spacing: .06em; }
+.story h2 { margin: 0; font: 700 clamp(30px, 4.4vw, 48px)/1.06 var(--sf-display); letter-spacing: -.03em; text-wrap: balance; }
+.story h3 { margin: 0; font: 700 clamp(22px, 2.6vw, 28px)/1.15 var(--sf-display); letter-spacing: -.02em; text-wrap: balance; }
+.story h4 { margin: 0 0 4px; font: 600 15px/1.3 var(--sf); }
+.lead { margin: 0; font: 500 clamp(19px, 2vw, 23px)/1.4 var(--sf-display); color: rgba(255,255,255,.88); max-width: 60ch; letter-spacing: -.015em; }
+.body { margin: 0; font-size: 16px; line-height: 1.55; color: rgba(255,255,255,.8); max-width: 62ch; }
+.chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.chip { font: 600 13px/1 var(--sf); padding: 8px 12px; border-radius: 999px; background: var(--fill); color: var(--label); }
+.chip.style { background: var(--tint); }
+.tiles { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+.tile { border-radius: 20px; padding: 16px 18px; min-width: 0; }
+.tile .k { font-size: 13px; color: var(--label-2); }
+.tile .v { margin-top: 4px; font: 700 clamp(20px, 2.2vw, 26px)/1.15 var(--sf-display); letter-spacing: -.02em; overflow-wrap: anywhere; }
+.split { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 22px; align-items: start; }
+.panel { border-radius: 24px; padding: 20px; min-width: 0; }
+.panel + .panel { margin-top: 0; }
+.stack { display: grid; gap: 18px; min-width: 0; }
+.stack p { margin: 0; font-size: 15px; line-height: 1.55; color: rgba(255,255,255,.8); }
+.diagram svg { width: 100%; height: auto; display: block; }
+.diagram .cap { margin: 10px 0 0; font-size: 12px; color: var(--label-3); }
+.d-ring { fill: none; stroke: rgba(255,255,255,.18); }
+.d-tick { stroke: rgba(255,255,255,.3); }
+.d-label { font: 600 11px var(--sf); fill: rgba(235,235,245,.62); }
+.d-n { font: 700 14px var(--sf); fill: #fff; }
+.d-wind { stroke: #64d2ff; stroke-width: 3; fill: none; }
+.d-windhead { fill: #64d2ff; }
+.d-sun { stroke: #ffd60a; stroke-width: 2; fill: none; stroke-dasharray: 4 5; }
+.d-sundot { fill: #ffd60a; }
+.d-bld { fill: rgba(255,255,255,.88); }
+.d-bld2 { fill: rgba(255,255,255,.55); }
+.d-water { fill: rgba(10,132,255,.35); }
+.d-green { fill: rgba(48,209,88,.28); }
+.d-road { fill: rgba(255,255,255,.12); }
+.legend { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 12px; color: var(--label-2); }
+.legend i { display: inline-block; width: 18px; height: 3px; border-radius: 2px; margin-right: 6px; vertical-align: middle; }
+.figure { position: relative; width: 100%; max-width: 100%; aspect-ratio: 1000 / 625; border-radius: 22px; overflow: hidden; background: #111; }
+.figure img { position: absolute; left: 0; width: 100%; }
+.figure .pin {
+  position: absolute; width: 30px; height: 30px; margin: -15px 0 0 -15px; border-radius: 50%;
+  background: #fff; color: #000; font: 700 14px/30px var(--sf); text-align: center;
+  box-shadow: 0 0 0 4px rgba(255,255,255,.35), 0 4px 14px rgba(0,0,0,.4); transition: transform .25s, box-shadow .25s;
+}
+.figure .pin.hot { transform: scale(1.25); box-shadow: 0 0 0 7px rgba(10,132,255,.6), 0 4px 14px rgba(0,0,0,.4); }
+.decisions { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.decisions li { border-radius: 20px; padding: 16px 18px 16px 58px; position: relative; min-width: 0; }
+.decisions li b { position: absolute; left: 16px; top: 15px; width: 28px; height: 28px; border-radius: 50%; background: #fff; color: #000; font: 700 13px/28px var(--sf); text-align: center; }
+.decisions li b.off { background: var(--fill); color: var(--label); }
+.decisions p { margin: 0; font-size: 15px; line-height: 1.5; color: rgba(255,255,255,.78); }
+.era svg, .gantt svg { width: 100%; height: auto; display: block; }
+.era-t { font: 600 11px var(--sf); fill: rgba(235,235,245,.62); }
+.era-b { font: 600 12px var(--sf); fill: #fff; }
+.tl { list-style: none; margin: 0; padding: 0; display: grid; grid-auto-flow: column; grid-auto-columns: minmax(150px, 1fr); gap: 0; overflow-x: auto; padding-bottom: 6px; }
+.tl li { position: relative; padding: 26px 16px 0 0; min-width: 0; }
+.tl li::before { content: ""; position: absolute; left: 0; right: 0; top: 8px; height: 2px; background: var(--separator); }
+.tl li::after { content: ""; position: absolute; left: 0; top: 3px; width: 12px; height: 12px; border-radius: 50%; background: var(--label-2); }
+.tl li.key::after { background: var(--tint); box-shadow: 0 0 0 4px rgba(10,132,255,.3); }
+.tl .y { font: 700 20px/1.2 var(--sf-display); font-variant-numeric: tabular-nums; }
+.tl .e { font-size: 14px; color: var(--label-2); margin-top: 2px; }
+.mats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+.mats div { border-radius: 18px; padding: 14px 16px; font-size: 15px; font-weight: 600; min-width: 0; }
+.mats span { display: block; font-size: 12px; font-weight: 500; color: var(--label-3); margin-bottom: 4px; }
+.nextup { display: flex; justify-content: center; }
+.gantt .g-name { font: 600 12px var(--sf); fill: #fff; }
+.gantt .g-axis { font: 500 11px var(--sf); fill: rgba(235,235,245,.5); }
+.gantt rect.g-bar { rx: 5; }
+.gantt .g-row.cur .g-name { fill: #64d2ff; }
+
+/* clickable pins + callout */
+.pins .pin-hit { pointer-events: auto; cursor: pointer; }
+.pins .pin-hit:hover circle:not(.ring), .pins .pin-hit.on circle:not(.ring) { fill: #0a84ff; }
+.pins .pin-hit:hover text, .pins .pin-hit.on text { fill: #fff; }
+.pins .pin-hit.on .ring { stroke: #0a84ff; stroke-width: 4; }
+.callout {
+  position: absolute; z-index: 6; left: 50%; bottom: 12px; transform: translateX(-50%);
+  width: min(460px, calc(100% - 32px)); box-sizing: border-box; border-radius: 22px; padding: 14px 16px 12px;
+  background: rgba(28, 28, 32, .78);
+}
+.callout p { margin: 6px 0 12px; font-size: 14px; line-height: 1.45; color: rgba(255,255,255,.86); }
+.co-top { display: flex; align-items: center; gap: 10px; }
+.co-top b { flex: none; width: 26px; height: 26px; border-radius: 50%; background: #0a84ff; font: 700 13px/26px var(--sf); text-align: center; }
+.co-top h3 { margin: 0; flex: 1; min-width: 0; font: 700 17px/1.25 var(--sf-display); letter-spacing: -.01em; }
+.co-x { flex: none; width: 30px; height: 30px; border-radius: 50%; border: 0; background: var(--fill); color: #fff; cursor: pointer; font-size: 13px; }
+.co-act { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.co-act .capsule { height: 30px; font-size: 12px; padding: 0 12px; }
+.co-nav { margin-left: auto; display: flex; gap: 6px; }
+.co-nav .capsule { width: 30px; padding: 0; justify-content: center; font-size: 16px; }
+.co-nav .capsule:disabled { opacity: .35; cursor: default; }
+.chiprow { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
+.chiprow > span:first-child { font: 600 12px var(--sf); color: var(--label-2); text-transform: uppercase; letter-spacing: .04em; }
+#chips { display: inline-flex; gap: 6px; flex-wrap: wrap; }
+.nchip { width: 30px; height: 30px; border-radius: 50%; border: 0; background: #fff; color: #000; font: 700 13px var(--sf); cursor: pointer; }
+.nchip[aria-pressed="true"], .nchip:hover { background: #0a84ff; color: #fff; }
+.more-row { margin-left: auto; display: inline-flex; gap: 8px; flex-wrap: wrap; }
+.more-row a { text-decoration: none; }
+
+.kfacts { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin: 0; }
+.kfacts div { border-radius: 16px; padding: 12px 14px; min-width: 0; }
+.kfacts dt { font: 600 11px var(--sf); color: var(--label-2); text-transform: uppercase; letter-spacing: .05em; }
+.kfacts dd { margin: 4px 0 0; font: 600 15px/1.35 var(--sf); overflow-wrap: anywhere; }
+.imr { display: grid; gap: 6px; margin: 0; }
+.imr div { display: grid; grid-template-columns: 58px minmax(0, 1fr); gap: 8px; align-items: baseline; }
+.imr dt { font: 700 11px var(--sf); text-transform: uppercase; letter-spacing: .05em; color: #64d2ff; }
+.imr div:nth-child(2) dt { color: #ffd60a; }
+.imr div:nth-child(3) dt { color: #30d158; }
+.imr dd { margin: 0; font-size: 14px; line-height: 1.45; color: rgba(255,255,255,.86); }
+.callout .imr { margin: 8px 0 12px; }
+@media (max-width: 860px) { .kfacts { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+
+/* construction caption */
+.bcap {
+  position: absolute; z-index: 6; left: 50%; bottom: 8px; transform: translateX(-50%);
+  width: min(520px, calc(100% - 32px)); box-sizing: border-box; border-radius: 18px; padding: 10px 14px;
+  display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px 12px; align-items: center;
+  background: rgba(16, 36, 62, .72); pointer-events: none;
+}
+.bsteps { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; }
+.bsteps i { height: 3px; border-radius: 2px; background: rgba(255,255,255,.2); transition: background .3s; }
+.bsteps i.now { background: #64d2ff; }
+.bsteps i.done { background: #fff; }
+.btxt { min-width: 0; display: grid; gap: 1px; }
+.btxt b { font: 700 14px/1.2 var(--sf); }
+.btxt span { font-size: 13px; line-height: 1.35; color: rgba(255,255,255,.82); }
+.bcap em { font: 700 22px/1 var(--sf-display); font-style: normal; font-variant-numeric: tabular-nums; color: #64d2ff; }
+.stage.building .pins { pointer-events: none; }
+
+/* story navigation + digest helpers */
+.snav {
+  position: sticky; top: max(10px, env(safe-area-inset-top, 0px)); z-index: 8;
+  display: flex; gap: 4px; overflow-x: auto; padding: 6px; border-radius: 999px; scrollbar-width: none;
+  background: rgba(28, 28, 32, .72);
+}
+.snav::-webkit-scrollbar { display: none; }
+.snav button { flex: none; height: 32px; padding: 0 14px; border: 0; border-radius: 999px; background: transparent; color: var(--label); font: 600 13px var(--sf); cursor: pointer; }
+.snav button:hover, .snav button.on { background: rgba(255,255,255,.16); }
+.story section { scroll-margin-top: 72px; }
+.takeaways { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+.takeaways div { border-radius: 20px; padding: 14px 16px; font: 600 16px/1.35 var(--sf-display); min-width: 0; }
+.takeaways span { display: block; margin-bottom: 4px; font: 600 12px var(--sf); color: var(--label-2); text-transform: uppercase; letter-spacing: .04em; }
+.rel { margin-top: 10px; padding: 0; border: 0; background: none; color: #64d2ff; font: 600 13px var(--sf); cursor: pointer; }
+.rel:hover { text-decoration: underline; }
+.srcs { margin: 0; padding-left: 18px; display: grid; gap: 6px; font-size: 14px; }
+.srcs a { color: #64d2ff; text-decoration: none; overflow-wrap: anywhere; }
+.srcs a:hover { text-decoration: underline; }
+.flash { animation: flash 1.6s ease; }
+@keyframes flash { 0%, 60% { box-shadow: 0 0 0 3px #0a84ff; } 100% { box-shadow: 0 0 0 3px transparent; } }
+.decisions li { scroll-margin-top: 80px; }
+
+/* circulation plans */
+.pswipe { display: none; margin: 8px 0 0; font-size: 12px; color: var(--label-3); }
+@media (max-width: 600px) {
+  .pscroll { overflow-x: auto; margin-inline: -8px; padding-inline: 8px; }
+  .pscroll svg { min-width: 600px; }
+  .pswipe { display: block; }
+}
+.circ { grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr); }
+.plan svg { width: 100%; height: auto; display: block; }
+.plan .cap { margin: 10px 0 0; font-size: 12px; color: var(--label-3); }
+.plan .legend { margin-top: 12px; }
+.c-room { fill: rgba(255,255,255,.1); stroke: rgba(255,255,255,.55); stroke-width: 1.5; }
+.c-upper { fill: rgba(100,210,255,.08); stroke: #64d2ff; stroke-dasharray: 6 4; }
+.c-terr { fill: rgba(255,255,255,.05); stroke-dasharray: 3 3; }
+.c-core { fill: rgba(255,255,255,.28); stroke: rgba(255,255,255,.7); }
+.c-podium { fill: rgba(255,255,255,.06); stroke: rgba(255,255,255,.25); }
+.c-water { fill: rgba(10,132,255,.22); }
+.c-green { fill: rgba(48,209,88,.12); }
+.c-road { fill: rgba(255,255,255,.07); }
+.c-dark { fill: #050507; stroke: rgba(255,255,255,.3); }
+.c-steps { fill: rgba(255,255,255,.16); stroke: rgba(255,255,255,.3); stroke-dasharray: 2 4; }
+.c-under { fill: none; stroke: #ffd60a; stroke-dasharray: 4 4; }
+.c-inset { fill: rgba(0,0,0,.35); stroke: rgba(255,255,255,.2); }
+.c-v { fill: #fff; }
+.c-in { fill: #30d158; }
+.c-t { font: 600 13px var(--sf); fill: #fff; }
+.c-t2 { font: 500 11px var(--sf); fill: rgba(235,235,245,.7); }
+.c-route, .c-route2 { fill: none; stroke-linecap: round; stroke-linejoin: round; }
+.c-route { stroke: #0a84ff; stroke-width: 5; stroke-dasharray: 12 8; animation: flow 1.1s linear infinite; }
+.c-route.c-up { stroke: #64d2ff; }
+.c-route2 { stroke: rgba(255,255,255,.6); stroke-width: 3; stroke-dasharray: 5 6; animation: flow 1.6s linear infinite; }
+@keyframes flow { to { stroke-dashoffset: -20; } }
+.c-dot { fill: #fff; stroke: #0a84ff; stroke-width: 3; }
+.c-dn { font: 700 12px var(--sf); fill: #000; }
+.walk { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+.walk li { position: relative; padding-left: 38px; font-size: 15px; line-height: 1.45; color: rgba(255,255,255,.86); min-height: 26px; }
+.walk b { position: absolute; left: 0; top: -1px; width: 26px; height: 26px; border-radius: 50%; background: #fff; color: #000; font: 700 12px/26px var(--sf); text-align: center; box-shadow: 0 0 0 3px #0a84ff; }
+.stack .panel p { margin: 0; }
+.sketch { background: rgba(255, 214, 10, .12); }
+@media (prefers-reduced-motion: reduce) { .c-route, .c-route2 { animation: none; } }
+
+@media (max-width: 860px) {
+  .takeaways { grid-template-columns: 1fr; }
+  .circ { grid-template-columns: 1fr; }
+  .tiles, .mats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .split, .decisions { grid-template-columns: 1fr; }
+}
+@media (max-width: 720px) {
+  .app { height: auto; grid-template-rows: auto 58vh auto; }
+  .platter { grid-template-columns: 1fr; padding: 16px; }
+  .nav, .title span, .hint { display: none; }
+  .note { text-align: left; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .card, .plane, .platter > *, .wallpaper img { transition-duration: .01s !important; transition-delay: 0s !important; }
+  .card.landing .sheen::after { animation: none; }
+}
+</style>
+
+<div class="wallpaper" id="wallpaper" aria-hidden="true"></div>
+<div class="app">
+  <header class="toolbar">
+    <div class="title">
+      <h1>Spatial London</h1>
+      <span>Ten commercial landmarks, 1986–2022</span>
+    </div>
+    <div class="controls">
+      <span class="status glass"><i></i>Depth from <b id="sourceName">pointer</b></span>
+      <button class="capsule glass" id="camBtn" type="button" aria-pressed="false">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="12" rx="2"/><path d="M8 21h8M12 17v4"/></svg>
+        <canvas id="camPreview" width="64" height="48" hidden></canvas>
+        <span id="camLabel">Sense lid tilt</span>
+      </button>
+      <button class="capsule glass" id="recenterBtn" type="button" hidden>Recenter</button>
+      <button class="capsule glass" id="pinBtn" type="button" aria-pressed="true">Annotations</button>
+    </div>
+    <p class="note" id="camNote" hidden></p>
+  </header>
+
+  <section class="stage" id="stage" aria-roledescription="carousel" aria-label="Building cards">
+    <button class="nav prev glass" id="prevBtn" type="button" aria-label="Previous building">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"/></svg>
+    </button>
+    <button class="nav next glass" id="nextBtn" type="button" aria-label="Next building">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M9 5l7 7-7 7"/></svg>
+    </button>
+  </section>
+
+  <footer class="platter glass" id="platter" aria-live="polite">
+    <div class="fade">
+      <div class="eyebrow" id="eyebrow"></div>
+      <h2 class="name" id="name"></h2>
+      <div class="sub" id="sub"></div>
+      <p class="fact" id="fact"></p>
+      <div class="chiprow"><span>Annotations</span><span id="chips"></span><span class="more-row"><button type="button" class="capsule glass" id="buildBtn">Construction ▶</button><button type="button" class="capsule glass" id="circBtn">Circulation ↓</button><a class="capsule glass" href="#story">Full story ↓</a></span></div>
+    </div>
+    <dl class="rows fade">
+      <div><dt>Completed</dt><dd id="year"></dd></div>
+      <div><dt>Architect</dt><dd id="architect"></dd></div>
+      <div><dt>Location</dt><dd id="coords"></dd></div>
+      <div><dt>Height</dt><dd id="height"></dd></div>
+    </dl>
+    <div class="foot">
+      <div class="credit fade" id="credit"></div>
+      <span class="hint">Hover the building to watch it go up · swipe for the next building</span>
+      <div class="pager" id="pager" role="tablist" aria-label="Choose a building"></div>
+    </div>
+  </footer>
+</div>
+
+<main class="story" id="story" aria-live="polite"></main>
+
+<script>
+(() => {
+  const W = 1000, H = 625;
+  const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const $ = (id) => document.getElementById(id);
+
+  /* Each photo is placed in card units (1000 × 625). y shifts the photo up so the
+     building sits where it should; anything above the card top only shows on the
+     building plane, so towers and shells break out of the card.
+     title: where the big year sits behind the building, like the clock on an iPhone Lock Screen.
+     fore: where the foreground strip starts. */
+  const MARVELS = [
+    { key: 'lloyds', name: 'Lloyd’s building', city: 'City of London', year: 1986, architect: 'Richard Rogers & Partners', coords: '51.5131° N, 0.0824° W', height: '88 m (95 m with cranes)',
+      fact: 'Every service moved outside: stairs, lifts, toilets and ducts ride on six steel-clad towers, leaving one 60 m atrium and open trading floors inside.',
+      img: { w: 1800, h: 2400, x: 180, y: -200, cw: 640 }, title: { y: 150, x: 112, s: 100, ink: '#ffffff' }, fore: 520,
+      credit: { by: 'DanielMichaelPerry', lic: 'CC0', url: 'https://commons.wikimedia.org/wiki/File:Lloyd%27s_Building_from_St_Mary_Axe.jpg' } },
+    { key: 'canada', name: 'One Canada Square', city: 'Canary Wharf, Docklands', year: 1991, architect: 'César Pelli & Associates', coords: '51.5050° N, 0.0196° W', height: '235 m',
+      fact: 'Britain’s tallest building from 1990 to 2012. Its stainless-steel skin and pyramid crown, with an aircraft warning light, became the symbol of a new business district built on closed docks.',
+      img: { w: 1800, h: 1349, x: 0, y: -40, cw: 1000 }, title: { y: 190, x: 470, s: 150, ink: '#ffffff' }, fore: 610,
+      credit: { by: 'mattbuck', lic: 'CC BY-SA 3.0', url: 'https://commons.wikimedia.org/wiki/File:London_MMB_%C2%AB11_Canary_Wharf.jpg' } },
+    { key: 'gherkin', name: '30 St Mary Axe', city: 'City of London', year: 2004, architect: 'Foster + Partners', coords: '51.5144° N, 0.0803° W', height: '180 m',
+      fact: 'Each floor turns five degrees, so six lightwells spiral up the tower and bring daylight and air deep into the floors. It was designed to use about half the energy of a comparable tower.',
+      img: { w: 1800, h: 2461, x: 190, y: -205, cw: 620 }, title: { y: 200, x: 650, s: 150, ink: '#ffffff' }, fore: 560,
+      credit: { by: 'Carlos Delgado', lic: 'CC BY-SA 3.0', url: 'https://commons.wikimedia.org/wiki/File:30_St_Mary_Axe_(Swiss_Re_Building)_and_St_Andrew_Undershaft_church.jpg' } },
+    { key: 'shard', name: 'The Shard', city: 'London Bridge, Southwark', year: 2012, architect: 'Renzo Piano Building Workshop', coords: '51.5044° N, 0.0864° W', height: '309.6 m',
+      fact: 'A vertical town of offices, restaurants, a hotel, homes and a public viewing gallery, stacked on top of one of London’s busiest stations. Eight sloping glass planes never quite meet at the top.',
+      img: { w: 1800, h: 1106, x: -15, y: -6, cw: 1030 }, title: { y: 230, x: 350, s: 190, ink: '#ffffff' }, fore: 520,
+      credit: { by: 'Diego Delso', lic: 'CC BY-SA 4.0', url: 'https://commons.wikimedia.org/wiki/File:Ayuntamiento_y_Shard,_Londres,_Inglaterra,_2014-08-11,_DD_076.JPG' } },
+    { key: 'leadenhall', name: 'The Leadenhall Building', city: 'City of London', year: 2014, architect: 'Rogers Stirk Harbour + Partners', coords: '51.5138° N, 0.0823° W', height: '225 m',
+      fact: 'Its south face leans back so the tower stays out of the protected view of St Paul’s Cathedral from Fleet Street. A steel megaframe on the outside replaces the usual concrete core.',
+      img: { w: 1800, h: 2393, x: 180, y: -205, cw: 640 }, title: { y: 150, x: 650, s: 150, ink: '#ffffff' }, fore: 590,
+      credit: { by: 'Colin', lic: 'CC BY-SA 4.0', url: 'https://commons.wikimedia.org/wiki/File:Cheesegrater_and_Gherkin.jpg' } },
+    { key: 'walkie', name: '20 Fenchurch Street', city: 'City of London', year: 2014, architect: 'Rafael Viñoly', coords: '51.5114° N, 0.0836° W', height: '160 m',
+      fact: 'It widens as it rises, putting more floor space at the top. Its curved south face once focused sunlight hot enough to damage a car, and a public Sky Garden fills the top three floors.',
+      img: { w: 1800, h: 1200, x: 0, y: -30, cw: 1000 }, title: { y: 150, x: 830, s: 130, ink: '#1d2430' }, fore: 625,
+      credit: { by: 'Diliff', lic: 'CC BY-SA 3.0', url: 'https://commons.wikimedia.org/wiki/File:20_Fenchurch_St_(Walkie-Talkie_building)_from_Rood_Ln,_London,_UK_-_Diliff.jpg' } },
+    { key: 'bloomberg', name: 'Bloomberg London', city: 'City of London', year: 2017, architect: 'Foster + Partners', coords: '51.5125° N, 0.0908° W', height: 'A full city block',
+      fact: 'Built around an open newsroom for 4,000 people, it scored 98.5% under BREEAM, the highest design-stage score for a major office. A 210 m bronze ramp spirals through the building so people meet as they move.',
+      img: { w: 1800, h: 1350, x: 0, y: -60, cw: 1000 }, title: { y: 535, x: 210, s: 130, ink: '#ffffff' }, fore: 560,
+      credit: { by: 'The wub', lic: 'CC BY-SA 4.0', url: 'https://commons.wikimedia.org/wiki/File:Bloomberg_London_central_ramp_-_2.jpg' } },
+    { key: 'coaldrops', name: 'Coal Drops Yard', city: 'King’s Cross', year: 2018, architect: 'Heatherwick Studio', coords: '51.5364° N, 0.1264° W', height: 'Two Victorian sheds',
+      fact: 'Two Victorian coal sheds were stretched until their roofs touched. The “kissing roof” adds a new upper floor and turns a forgotten yard into a sheltered shopping street.',
+      img: { w: 1800, h: 1200, x: 0, y: -10, cw: 1000 }, title: { y: 62, x: 425, s: 72, ink: '#1d2430' }, fore: 560,
+      credit: { by: 'Fred Romero', lic: 'CC BY 2.0', url: 'https://commons.wikimedia.org/wiki/File:London_-_Coals_Drop_Yard_(33500465628).jpg' } },
+    { key: 'bishopsgate', name: '22 Bishopsgate', city: 'City of London', year: 2020, architect: 'PLP Architecture', coords: '51.5145° N, 0.0829° W', height: '278 m',
+      fact: 'Planned as a vertical village for up to 12,000 people, with a food market, a gym, space for over 1,000 bikes and Horizon 22, a free viewing gallery 254 m up.',
+      img: { w: 1800, h: 1350, x: 0, y: -70, cw: 1000 }, title: { y: 250, x: 720, s: 150, ink: '#ffffff' }, fore: 590,
+      credit: { by: 'Matt Brown', lic: 'CC BY 2.0', url: 'https://commons.wikimedia.org/wiki/File:Light_reflecting_off_22_Bishopsgate_2024-11-13.jpg' } },
+    { key: 'battersea', name: 'Battersea Power Station', city: 'Nine Elms, Wandsworth', year: 2022, architect: 'WilkinsonEyre (restoration)', coords: '51.4817° N, 0.1447° W', height: 'Lift 109 viewpoint, 109 m',
+      fact: 'One of the world’s largest brick buildings stood empty for almost 40 years after 1983. It reopened in 2022 with Apple’s London offices, shops, homes and a glass lift inside a chimney.',
+      img: { w: 1800, h: 1350, x: 0, y: -80, cw: 1000 }, title: { y: 210, x: 700, s: 150, ink: '#ffffff' }, fore: 500,
+      credit: { by: 'Alan Hughes', lic: 'CC BY-SA 2.0', url: 'https://commons.wikimedia.org/wiki/File:Battersea_Power_Station_-_geograph.org.uk_-_7356825.jpg' } },
+  ];
+
+  /* ---------- the story behind each building ----------
+     pins: [x, y] in card units, matching the photo placement above; null = not visible in the photo.
+     wind: direction the prevailing wind blows FROM, in compass degrees.
+     sun: N = sun arcs through the south sky, S = through the north, EQ = nearly overhead. */
+  const LDN_WIND = [[240, 'WSW to SW'], [90, 'E, often in spring']];
+  const LDN_WINDSRC = 'London City Airport, 2019–2023: winds mostly from the west-south-west and south-west; easterlies are common in spring. The strongest gusts come from the west.';
+  const LDN_CLIMATE = 'Temperate maritime, mild and wet (Köppen Cfb)';
+  const STORY = {
+    lloyds: {
+      style: 'High-tech', span: [1965, 2025], designed: 1978, built: [1978, 1986], client: 'Lloyd’s of London',
+      styleNote: 'Structure and services on show. High-tech architects treated buildings like machines: exposed frames, pipes and lifts, made from industrial parts so they can be changed over time.',
+      relatives: 'Centre Pompidou, Paris (1977), HSBC Building, Hong Kong (1986), the Leadenhall Building (2014)',
+      why: 'An insurance market that kept outgrowing its buildings.',
+      need: 'By the 1970s Lloyd’s, the insurance market, had outgrown its 1928 and 1958 buildings. It held a competition in 1978 for a building that could keep changing with the market for decades. Rogers answered with open floors around one central room and every service pushed outside, where it could be replaced.',
+      site: 'A tight, irregular plot at Lime Street and Leadenhall Street, in the City of London’s insurance district, where the 1928 Lloyd’s building stood. Its Leadenhall Street entrance was kept. Six service towers fill the awkward edges of the plot, so the main block stays a clean rectangle.',
+      climate: LDN_CLIMATE, wind: LDN_WIND, windSrc: LDN_WINDSRC, sun: 'N',
+      response: 'A barrel-vaulted glass roof floods the 60 m atrium with daylight. The exposed services weather fast in London’s damp air, and upkeep became so costly that Lloyd’s considered leaving in 2014.',
+      facts: [['Client', 'Lloyd’s of London'], ['Architect', 'Richard Rogers & Partners'], ['Engineer', 'Arup (Peter Rice)'], ['Contractor', 'Bovis (management contract)'], ['Height', '88 m roof, 95 m with cranes'], ['Floors', '14'], ['Lifts', '12 external glass lifts, 2 internal'], ['Cost', '£75 million'], ['Opened', '18 November 1986, by Queen Elizabeth II'], ['Listing', 'Grade I, 2011'], ['Nearest stations', 'Bank, Monument, Aldgate']],
+      decisions: [
+        ['Services on the outside', { intent: 'Keep the trading floors clear and adaptable for decades.', move: 'Stairs, lifts, toilets, ducts and pipes moved into six towers around the outside.', result: 'Open floors inside; services can be replaced without disturbing the offices.' }, [365, 230], 'circulation'],
+        ['One room at the centre', { intent: 'Keep the whole market together, as Lloyd’s had always traded in one Room.', move: 'A 60 m atrium over the Underwriting Room, with galleries around it linked by escalators.', result: 'Underwriters on the lower galleries look straight down into the Room.' }, [460, 330], 'circulation'],
+        ['Glass lifts on the facade', { intent: 'Move people up without cutting holes in the floors.', move: '12 external glass lifts on the service towers, the first of their kind in the UK.', result: 'Circulation becomes part of the facade you see from the street.' }, null, 'circulation'],
+        ['A frame that can change', { intent: 'Let Lloyd’s grow or shrink floor by floor.', move: 'Modular floors where partitions can be added or removed.', result: 'The same building has housed the market since 1986.' }, null, 'materials'],
+        ['Old and new together', { intent: 'Keep the institution’s memory.', move: 'The 1928 Leadenhall Street entrance kept; the 1763 Adam Room rebuilt on the 11th floor.', result: 'Listed Grade I in 2011, the youngest building to receive that grade at the time.' }, null, 'style'],
+      ],
+      materials: [['Structure', 'Reinforced concrete frame'], ['Services', 'Six steel-clad service towers'], ['Roof', 'Barrel-vaulted glass over the atrium'], ['Lifts', '12 external glass lifts']],
+      timeline: [[1928, 'Earlier Lloyd’s building opens on the site'], [1978, 'Competition; Rogers commissioned'], [1986, 'Opened by Queen Elizabeth II, 18 November', 1], [2011, 'Listed Grade I'], [2013, 'Sold to Ping An for £260 million']],
+      plan: 'lloyds', oriented: false,
+    },
+    canada: {
+      style: 'Postmodernism', span: [1975, 2005], designed: 1987, built: [1988, 1991], client: 'Olympia & York',
+      styleNote: 'A modern steel tower given a classical silhouette: a clear base, shaft and crown, finished with a pyramid.',
+      relatives: 'Petronas Towers (1998) and 181 West Madison, Chicago (1990), both by Pelli',
+      why: 'A second financial centre, built on closed docks.',
+      need: 'London’s docks had closed, and the City had little room for the huge trading floors banks wanted in the 1980s. Developers Olympia & York bought the Canary Wharf plans in 1987 to build a new business district, with this tower at its centre.',
+      site: 'Canada Square, on the former West India Docks in the Isle of Dogs, east of the City. The tower stands on 222 piles and a 4 m concrete raft set into the old dock. Five floors were taken off the original design to keep clear of London City Airport’s flight paths.',
+      climate: LDN_CLIMATE, wind: LDN_WIND, windSrc: LDN_WINDSRC, sun: 'N',
+      response: 'Open water around the docks exposes the tower to wind from every side. Stainless-steel cladding stands up to the weather, and the pyramid carries an aircraft warning beacon, rare on UK buildings.',
+      facts: [['Developer', 'Olympia & York'], ['Architect', 'César Pelli & Associates, with Adamson Associates and Frederick Gibberd Coombes & Partners'], ['Contractors', 'Sir Robert McAlpine with EllisDon; later Lehrer McGovern'], ['Height', '235 m'], ['Floors', '50'], ['Lifts', '37'], ['Steel', 'About 27,500 t, 500,000 bolts'], ['Topped out', '8 November 1990'], ['Opened', '26 August 1991, by the Duke of Edinburgh'], ['Record', 'UK’s tallest building, 1990–2012'], ['Nearest stations', 'Canary Wharf (Jubilee, Elizabeth line), DLR']],
+      decisions: [
+        ['A crown you can find', { intent: 'Give a brand-new district a landmark visible for miles.', move: 'A 40 m stainless-steel pyramid with an aircraft warning beacon.', result: 'The tower became the emblem of Canary Wharf.' }, [168, 60], 'style'],
+        ['Stainless-steel skin', { intent: 'A durable, bright facade that reads as modern finance.', move: 'Stainless-steel cladding with a textured finish across the whole tower.', result: 'The tower shifts with the light and needs little upkeep.' }, [168, 330], 'materials'],
+        ['Built on the dock', { intent: 'Carry a 235 m tower on soft dock ground.', move: '222 piles driven 23 m deep under a 4 m concrete raft.', result: 'Opened the old docks to tall buildings.' }, null, 'materials'],
+        ['A lobby of marble', { intent: 'Make arriving feel like an occasion.', move: 'An 11 m high lobby lined with about 8,000 m² of marble.', result: 'A grand entrance for thousands of workers a day.' }, null, 'circulation'],
+        ['Cut for the planes', { intent: 'Stay clear of London City Airport’s flight paths.', move: 'Five floors removed from the 55-storey design.', result: '50 floors, 235 m.' }, null, 'site'],
+      ],
+      materials: [['Structure', 'About 27,500 t of British steel'], ['Skin', 'Stainless-steel cladding'], ['Crown', '40 m stainless-steel pyramid'], ['Base', '222 piles, 4 m concrete raft']],
+      timeline: [[1987, 'Olympia & York buy the Canary Wharf plans'], [1988, 'Construction starts'], [1990, 'Becomes the UK’s tallest building; topped out in November'], [1991, 'Opened 26 August', 1], [1992, 'Olympia & York goes into administration'], [2012, 'The Shard takes the height record']],
+      plan: 'canada', oriented: false,
+    },
+    gherkin: {
+      style: 'High-tech', span: [1965, 2025], designed: 1999, built: [2001, 2003], client: 'Swiss Re',
+      styleNote: 'Engineering as expression. Later high-tech towers like this one use the structure itself, here a diagonal grid, as the architecture.',
+      relatives: 'City Hall, London (2002) and Hearst Tower, New York (2006), both by Foster + Partners',
+      why: 'A new head office on a bomb-damaged site.',
+      need: 'In 1992 an IRA bomb badly damaged the Baltic Exchange on this site. A proposed 386 m Millennium Tower was dropped over its scale and its effect on flight paths. Swiss Re then commissioned Foster + Partners in 1999 to design its UK head office.',
+      site: 'St Mary Axe in the City’s insurance quarter. The round, tapering plan takes up less of the site at ground level than a square tower would, leaving room for a public plaza at its foot. Planning permission was granted by Deputy Prime Minister John Prescott in 2000.',
+      climate: LDN_CLIMATE, wind: LDN_WIND, windSrc: LDN_WINDSRC, sun: 'N',
+      response: 'Gaps in each floor line up into six shafts that work as natural ventilation, with firebreaks every sixth floor, and the double-layered glazing traps air as insulation. It was designed to use about half the energy of a similar tower, though partitions later added by tenants stopped the shafts working as intended.',
+      facts: [['Client', 'Swiss Re'], ['Architect', 'Foster + Partners'], ['Engineer', 'Arup'], ['Contractor', 'Skanska'], ['Height', '180 m'], ['Floors', '41'], ['Floor area', '64,470 m²'], ['Cost', '£138 million, plus £90.6 million for the land'], ['Opened', '28 April 2004'], ['Award', 'RIBA Stirling Prize 2004'], ['Nearest stations', 'Aldgate, Liverpool Street']],
+      decisions: [
+        ['A diagrid skin', { intent: 'Make the tower rigid without heavy columns inside.', move: 'A fully triangulated steel grid around the perimeter, designed by Arup.', result: 'Open floors, and the diamond pattern you see.' }, [330, 190], 'materials'],
+        ['Spiralling lightwells', { intent: 'Bring daylight and air deep into a round plan.', move: 'Each floor turned five degrees, so six triangular voids spiral up the tower.', result: 'Natural ventilation shafts and views between floors.' }, [255, 80], 'site'],
+        ['A tapered, rounded form', { intent: 'Fit a large building on a tight City site without walling in the street.', move: 'A form that swells in the middle and narrows at the base and top.', result: 'More open ground for a public plaza.' }, [218, 330], 'site'],
+        ['A glass lens on top', { intent: 'Give the top of the building to people, not machinery.', move: 'A curved glass cap over a bar on the 40th floor; its lift is pushed from below.', result: 'The building’s only curved glass, with 360° views.' }, null, 'circulation'],
+      ],
+      materials: [['Structure', 'Steel diagrid and central core'], ['Skin', 'Flat glass panels, double-layered'], ['Top', 'Curved glass lens'], ['Floor area', '64,470 m² over 41 floors']],
+      timeline: [[1992, 'IRA bomb damages the Baltic Exchange'], [1996, 'A 386 m Millennium Tower is proposed, then dropped'], [1999, 'Foster + Partners win the design'], [2000, 'Planning permission granted'], [2001, 'Construction starts'], [2004, 'Opens 28 April; wins the Stirling Prize', 1]],
+      plan: 'gherkin', oriented: false,
+    },
+    shard: {
+      style: 'Neo-futurism', span: [1990, 2025], designed: 2003, built: [2009, 2012], client: 'Sellar Property Group',
+      styleNote: 'Expressive, technology-driven forms that read as sculpture on the skyline, built with advanced glass and structure.',
+      relatives: 'The New York Times Building (2007), Centre Pompidou (1977), both by Piano',
+      why: 'Density on top of a transport hub.',
+      need: 'In 1998 developer Irvine Sellar set out to replace the 1975 Southwark Towers next to London Bridge station. Piano proposed a spire that tapers as it rises, so it takes little ground and narrows as the uses need less space.',
+      site: 'Directly beside and above London Bridge station, served by National Rail and the Jubilee and Northern lines. Heritage bodies including English Heritage objected; a public inquiry sat in 2003 and consent followed that November.',
+      climate: LDN_CLIMATE, wind: LDN_WIND, windSrc: LDN_WINDSRC, sun: 'N', oriented: true,
+      response: 'A double-skin facade of extra-white glass with internal blinds that react to daylight. Vents in the gaps between the glass planes ventilate winter gardens, and a combined heat and power plant serves the tower.',
+      facts: [['Developer', 'Sellar Property Group; the State of Qatar owns 95%'], ['Architect', 'Renzo Piano Building Workshop, with Adamson Associates'], ['Height', '309.6 m'], ['Storeys', '95 (72 habitable)'], ['Lifts', '36'], ['Glass', '11,000 panes, 56,000 m²'], ['Cost', '£435 million (contract)'], ['Inaugurated', '5 July 2012'], ['Viewing deck', 'Opened 1 February 2013, 244 m up'], ['Nearest station', 'London Bridge']],
+      decisions: [
+        ['Eight sloping planes', { intent: 'Make a very tall tower feel light against the sky.', move: 'Eight leaning planes of extra-white glass that stop short of meeting at the top.', result: 'The tower takes on the colour of the sky and ends in open fragments.' }, [760, 190], 'materials'],
+        ['A town stacked vertically', { intent: 'Mix uses so the tower is busy day and night.', move: 'Offices low down, restaurants on 31–33, a hotel on 34–52, homes on 53–65, the View on 68–72.', result: 'Floors shrink as the uses need less space.' }, [748, 320], 'circulation'],
+        ['Built at a station', { intent: 'Put density where the transport already is.', move: 'The tower stands at London Bridge station.', result: 'Workers and visitors can arrive by train or Tube at its foot.' }, [745, 420], 'site'],
+        ['Built top-down', { intent: 'Save time on a cramped, busy site.', move: 'Core and basement built at the same time, a first in the UK.', result: 'A concrete core with post-tensioned floors and 400 mm of sway tolerance.' }, null, 'materials'],
+      ],
+      materials: [['Structure', 'Concrete core, post-tensioned floors'], ['Skin', '11,000 panes of extra-white glass'], ['Facade', 'Double skin with internal blinds'], ['Energy', 'Combined heat and power plant']],
+      timeline: [[1998, 'Sellar plans to replace Southwark Towers'], [2003, 'Public inquiry; consent in November'], [2008, 'Qatari consortium buys an 80% stake'], [2009, 'Full construction begins in March'], [2012, 'Topped out in March; inaugurated 5 July', 1], [2013, 'The View opens to the public']],
+      plan: 'shard',
+    },
+    leadenhall: {
+      style: 'High-tech', span: [1965, 2025], designed: 2004, built: [2011, 2014], client: 'British Land and Oxford Properties',
+      styleNote: 'Structure and services on show, as at Lloyd’s across the street: the bracing, lifts and machinery are part of the facade.',
+      relatives: 'Lloyd’s building (1986), Centre Pompidou (1977)',
+      why: 'A tall tower that had to keep St Paul’s in view.',
+      need: 'British Land wanted large, column-free floors in the City’s insurance district, opposite Lloyd’s. The planning test was strict: the tower could not intrude on the protected view of St Paul’s Cathedral from Fleet Street.',
+      site: '122 Leadenhall Street, opposite the Lloyd’s building. The City of London approved the plans in May 2005. After the site was cleared, the 2008 financial crisis stalled the project until December 2010.',
+      climate: LDN_CLIMATE, wind: LDN_WIND, windSrc: LDN_WINDSRC, sun: 'N',
+      response: 'The sloping face is fully glazed and shows the bracing behind. The flat side holds the lifts and plant behind glass, with bright orange counterweights and motors on show. A 30 m high public space at the base continues the street plaza under the tower.',
+      facts: [['Developers', 'British Land and Oxford Properties'], ['Architect', 'Rogers Stirk Harbour + Partners'], ['Engineer', 'Arup'], ['Contractor', 'Laing O’Rourke'], ['Height', '225 m'], ['Floors', '48'], ['Floor area', '84,424 m²'], ['Cost', '£1.15 billion'], ['Opened', 'July 2014'], ['Nearest stations', 'Bank, Monument, Aldgate']],
+      decisions: [
+        ['A wedge for St Paul’s', { intent: 'Protect the view of St Paul’s from Fleet Street.', move: 'The south face slopes back as the tower rises.', result: 'The “Cheesegrater” profile.' }, [400, 140], 'site'],
+        ['A megaframe, no core', { intent: 'Free the floors from a central concrete core.', move: 'A perimeter steel megaframe, designed by Arup, gives the tower its stability.', result: 'Open floors; the tallest building of its kind in the world.' }, [325, 320], 'materials'],
+        ['Services on the flat side', { intent: 'Keep lifts and plant out of the views and daylight.', move: 'A separate glazed service core on the flat face.', result: 'Lifts and orange counterweights become part of the facade.' }, null, 'circulation'],
+        ['A public room at the base', { intent: 'Give the ground floor back to the public.', move: 'A 30 m high open space under the tower, continuing the plaza.', result: 'A covered public space beneath an office tower.' }, null, 'circulation'],
+      ],
+      materials: [['Structure', 'Perimeter steel megaframe'], ['Skin', 'Glass over exposed bracing'], ['Core', 'Glazed service core on the flat side'], ['Base', '30 m high public space']],
+      timeline: [[2004, 'Planning application submitted'], [2005, 'Approved in May'], [2008, 'Delayed by the financial crisis'], [2010, 'Project revived in December'], [2013, 'Steelwork topped out'], [2014, 'Opens in July', 1]],
+      plan: 'leadenhall', oriented: false,
+    },
+    walkie: {
+      style: 'Neo-futurism', span: [1990, 2025], designed: 2006, built: [2009, 2014], client: 'Land Securities and Canary Wharf Group',
+      styleNote: 'Expressive, technology-driven forms that make a strong mark on the skyline.',
+      relatives: 'Vdara Hotel, Las Vegas (2009), also by Viñoly; the Shard (2012)',
+      why: 'More space up high, with a public garden on top.',
+      need: 'Land Securities and Canary Wharf Group replaced a 1968 office block with a tower that grows wider as it rises, putting more floor area near the top. A public garden at the summit was part of the case for approving it.',
+      site: 'Fenchurch Street, on the eastern edge of the City’s tower cluster near the Tower of London. It was cut from nearly 200 m to 160 m over its impact on St Paul’s and the Tower, approved in 2006, called in for a public inquiry, and granted full permission in 2007.',
+      climate: LDN_CLIMATE, wind: LDN_WIND, windSrc: LDN_WINDSRC, sun: 'N',
+      response: 'In summer 2013 the concave south face focused sunlight onto streets to the south: 91 °C to 117 °C was measured at street level and a parked car was damaged. A permanent shading awning was added in 2014. After completion, complaints about strong wind at street level followed in 2015.',
+      facts: [['Developers', 'Land Securities, Canary Wharf Group'], ['Architect', 'Rafael Viñoly (executive architect Adamson Associates)'], ['Engineer', 'Halcrow Yolles'], ['Contractor', 'Canary Wharf Contractors'], ['Height', '160 m'], ['Storeys', '38, including the Sky Garden'], ['Office area', '62,100 m²'], ['Cost', 'Over £200 million'], ['Completed', 'August 2014'], ['Sky Garden', 'Opened January 2015, free to visit'], ['Award', 'Carbuncle Cup 2015'], ['Nearest station', 'Monument']],
+      decisions: [
+        ['Wider at the top', { intent: 'Put more floor area where views are best.', move: 'A top-heavy form that bulges outward as it rises.', result: 'Larger upper floors and the “Walkie-Talkie” silhouette.' }, [470, 260], 'site'],
+        ['The Sky Garden', { intent: 'Give the public a reason to support a tall tower.', move: 'A three-storey garden, terraces and restaurants at the top, free to visit, with its own entrance on Philpot Lane.', result: 'One of London’s most visited viewpoints.' }, [420, 40], 'circulation'],
+        ['A lesson in sunlight', { intent: 'A curved, fully glazed south face.', move: 'The concave curve focused reflected sun onto the street in 2013.', result: 'A permanent shading awning was added in 2014.' }, null, 'site'],
+        ['Double-deck lifts in two zones', { intent: 'Move a whole tower of office workers quickly.', move: '14 double-deck lifts: seven up to the 20th floor, seven above.', result: 'Fewer lift shafts for the number of people.' }, null, 'circulation'],
+      ],
+      materials: [['Structure', 'Concrete core, steel frame'], ['Skin', 'Glass with solar shading east and west'], ['Fix', 'Shading awning on the south face, 2014'], ['Top', 'Three-storey Sky Garden']],
+      timeline: [[2006, 'Approved at a reduced height'], [2007, 'Public inquiry rules for the developers'], [2009, 'Piling begins'], [2012, 'Concrete core and steel topped out'], [2013, 'Reflected sunlight damages a car on Eastcheap'], [2014, 'Completed in August; shading added', 1], [2015, 'Sky Garden opens; Carbuncle Cup']],
+      plan: 'walkie', oriented: false,
+    },
+    bloomberg: {
+      style: 'Contemporary', span: [2000, 2025], designed: 2010, built: [2010, 2017], client: 'Bloomberg L.P.',
+      styleNote: 'Today’s office architecture: performance-led design where energy, wellbeing and how people meet shape the building as much as image does.',
+      relatives: 'Apple Park, Cupertino (2017) and Comcast Technology Center (2018), both by Foster + Partners',
+      why: 'A headquarters built to make people meet.',
+      need: 'Bloomberg wanted a European headquarters that works like its open newsrooms, where people see and bump into each other all day, and that sets a new standard for sustainable offices.',
+      site: 'A whole city block on Queen Victoria Street, on the site of Bucklersbury House, demolished in 2010. Digging revealed Roman London: the Temple of Mithras was returned close to its original spot and is open to the public as the London Mithraeum. The project also gave Bank station a new step-free entrance in 2018.',
+      climate: LDN_CLIMATE, wind: LDN_WIND, windSrc: LDN_WINDSRC, sun: 'N',
+      response: 'Bronze fins on the sandstone facade shade the glass and help the building ventilate naturally. Rainwater from the roof flushes the vacuum toilets, and ceiling “petals” combine lighting, cooling and sound absorption.',
+      facts: [['Client', 'Bloomberg L.P.'], ['Architect', 'Foster + Partners'], ['Engineer', 'AKT II'], ['Contractor', 'Sir Robert McAlpine'], ['Cost', 'About £1 billion'], ['Staff', '4,000'], ['Facade', '9,600 t of Derbyshire sandstone'], ['Opened', 'October 2017'], ['Rating', 'BREEAM 98.5%'], ['Award', 'RIBA Stirling Prize 2018'], ['Nearest stations', 'Bank (new entrance 2018), Mansion House, Cannon Street']],
+      decisions: [
+        ['The ramp', { intent: 'Turn moving between floors into a chance to meet.', move: 'A 210 m stepped, bronze-clad ramp that loops through the building’s full height.', result: 'People pass each other face to face instead of disappearing into lifts.' }, [450, 210], 'circulation'],
+        ['Ceiling petals', { intent: 'Put light, cooling and acoustics into one surface.', move: 'Custom aluminium “petals” across the ceilings, with 500,000 LEDs.', result: 'A calm, quiet open plan for 4,000 people.' }, [70, 70], 'materials'],
+        ['A street through the block', { intent: 'Restore an old route across the City.', move: 'Bloomberg Arcade between the two buildings follows part of the Roman Watling Street.', result: 'A public lane of restaurants through the site.' }, null, 'circulation'],
+        ['A breathing facade', { intent: 'Cut energy use in a deep office building.', move: 'A sandstone frame with bronze fins that shade and ventilate.', result: 'BREEAM 98.5%, the highest design-stage score for a major office.' }, null, 'site'],
+        ['The Vortex', { intent: 'Mark the change from street to workplace.', move: 'Three curved timber shells that twist into an oculus.', result: 'A sheltered threshold before glass lifts rise to the sixth-floor pantry.' }, null, 'circulation'],
+      ],
+      materials: [['Facade', '9,600 t Derbyshire sandstone'], ['Fins', 'Bronze, for shade and air'], ['Ramp', '210 m, bronze-clad'], ['Ceilings', 'Aluminium petals, 500,000 LEDs']],
+      timeline: [[1954, 'Temple of Mithras found on the site'], [2010, 'Bucklersbury House demolished; work begins in December'], [2017, 'Opens in October', 1], [2018, 'Stirling Prize; new Bank station entrance']],
+      plan: 'bloomberg', oriented: false,
+    },
+    coaldrops: {
+      style: 'Adaptive reuse', span: [1975, 2025], designed: 2014, built: [2016, 2018], client: 'Argent (King’s Cross)',
+      styleNote: 'Designing with what is already there: old industrial buildings kept, repaired and extended for a new life.',
+      relatives: 'Battersea Power Station (2022), Tate Modern (2000)',
+      why: 'Turning abandoned coal sheds into a place people go.',
+      need: 'King’s Cross was being rebuilt as a new neighbourhood. Its developer, Argent, needed shops and a reason to walk across the canal, and had two long Victorian coal sheds that were hard to use as they were.',
+      site: 'Between Regent’s Canal and the railway lands north of King’s Cross station. The eastern coal drops date from 1851 and the western from 1860; together they handled about 8 million tonnes of coal a year. Heatherwick was appointed in 2014 and the plans approved in December 2015.',
+      climate: LDN_CLIMATE, wind: LDN_WIND, windSrc: LDN_WINDSRC, sun: 'N', oriented: true,
+      response: 'The new roof shelters part of the yard from London’s rain, so the space works as a street all year. Slate for the new roof came from the same Welsh quarry seam as the original.',
+      facts: [['Developer', 'Argent'], ['Architect', 'Heatherwick Studio'], ['Engineer', 'Arup'], ['Contractor', 'BAM Nuttall'], ['Cost', '£100 million'], ['Shops', '9,290 m², units of 15–1,800 m²'], ['New roof', '35 m span on 54 steel columns'], ['Opened', '26 October 2018'], ['Awards', 'RIBA National Award 2019'], ['Nearest station', 'King’s Cross St Pancras']],
+      decisions: [
+        ['The kissing roofs', { intent: 'Join two separate sheds into one place.', move: 'The inner roof slopes are stretched up until they meet.', result: 'A new glazed upper floor of about 1,900 m², spanning 35 m.' }, [420, 215], 'materials'],
+        ['Keep the Victorian fabric', { intent: 'Let the history stay visible.', move: 'Brick and iron kept; new slate from the original quarry seam.', result: 'Old and new read clearly side by side.' }, [830, 520], 'materials'],
+        ['A yard as a street', { intent: 'A shopping street people want to linger in.', move: 'The yard between the sheds stays open, partly covered by the new roof.', result: 'Public space with shops on two levels.' }, [420, 560], 'circulation'],
+        ['Small units', { intent: 'Attract independent shops, not only chains.', move: 'Units from 15 to 1,800 m².', result: 'A varied street of 9,290 m² of shops.' }, null, 'site'],
+      ],
+      materials: [['Original', 'Brick, wrought and cast iron'], ['New roof', 'Steel, on 54 columns'], ['Slate', 'From the original Welsh seam'], ['Upper floor', 'Two-storey glazed space']],
+      timeline: [[1851, 'Eastern coal drops built'], [1860, 'Western coal drops built'], [2014, 'Heatherwick appointed'], [2015, 'Plans approved in December'], [2016, 'Construction starts in February'], [2018, 'Opens 26 October', 1], [2019, 'RIBA National Award']],
+      plan: 'coaldrops',
+    },
+    bishopsgate: {
+      style: 'Contemporary', span: [2000, 2025], designed: 2015, built: [2016, 2020], client: 'AXA IM – Real Assets and Lipton Rogers',
+      styleNote: 'Today’s office architecture: towers designed around the people inside, with shared amenities and wellbeing given as much weight as the skyline.',
+      relatives: 'Hudson Yards, New York (2019), the Shard (2012)',
+      why: 'Finishing a site where a tower stalled at seven storeys.',
+      need: 'The Pinnacle, an earlier tower here, stalled in 2012 with only seven storeys of its concrete core built. A consortium led by AXA bought the site in 2015, removed the old core, and commissioned a simpler, bigger tower designed around the people who would work in it.',
+      site: 'At the heart of the City’s tall-building cluster on Bishopsgate. Its height was capped by Civil Aviation Authority limits linked to London City Airport’s flight paths and crane operations; earlier, taller schemes on the site were cut back.',
+      climate: LDN_CLIMATE, wind: LDN_WIND, windSrc: LDN_WINDSRC, sun: 'N',
+      response: 'With up to 12,000 people inside, evacuation shaped the design. Engineers WSP developed a strategy that uses the passenger lifts to evacuate people in an emergency, rather than relying on stairs alone.',
+      facts: [['Developers', 'AXA IM – Real Assets, Lipton Rogers'], ['Architect', 'PLP Architecture'], ['Engineer', 'WSP'], ['Contractor', 'Multiplex'], ['Height', '278 m'], ['Floors', '62'], ['Office area', 'About 120,000 m²'], ['Occupancy', 'Up to 12,000 people'], ['Lifts', 'Double-deck lifts in three groups'], ['Viewing gallery', 'Horizon 22, floor 58, 254 m, free'], ['Completed', '2020'], ['Nearest stations', 'Liverpool Street, Bank']],
+      decisions: [
+        ['A vertical village', { intent: 'Make a 12,000-person office feel like a neighbourhood.', move: 'Shared spaces: a food market, a gym with a climbing wall, parking for over 1,000 bikes.', result: 'Amenities usually spread across a district, stacked in one tower.' }, [400, 400], 'circulation'],
+        ['Height set by the sky', { intent: 'Stay clear of London City Airport’s flight paths.', move: 'Height capped at 278 m under aviation limits.', result: 'The City’s tallest building, lower than the Shard.' }, [385, 80], 'site'],
+        ['Horizon 22', { intent: 'Give the public a view from the top.', move: 'A free viewing gallery on the 58th floor, 254 m up.', result: 'The highest viewing gallery in the UK.' }, [455, 165], 'circulation'],
+        ['Lifts for every day and emergencies', { intent: 'Move, and if needed evacuate, thousands of people.', move: 'Double-deck lifts in three groups, planned for lift-assisted evacuation.', result: 'Fewer, larger shafts and a faster way out.' }, null, 'circulation'],
+      ],
+      materials: [['Engineer', 'WSP, structure and services'], ['Skin', 'Glass curtain wall'], ['Lifts', 'Double-deck, three groups'], ['Offices', 'About 120,000 m²']],
+      timeline: [[2008, 'The Pinnacle begins on the site'], [2012, 'The Pinnacle stalls at seven storeys'], [2015, 'AXA-led group buys the site; old core removed'], [2016, 'Construction of 22 Bishopsgate begins'], [2020, 'Completed', 1]],
+      plan: 'bishopsgate', oriented: false,
+    },
+    battersea: {
+      style: 'Art Deco, reused', span: [1920, 1945], designed: 2012, built: [2014, 2022], client: 'S P Setia, Sime Darby, EPF',
+      styleNote: 'Industrial Art Deco: a power station designed as a monument, with fluted brick and the chimneys as columns. The restoration keeps that character and adds new uses inside.',
+      relatives: 'Bankside Power Station, now Tate Modern (by the same Giles Gilbert Scott), Coal Drops Yard (2018)',
+      why: 'Giving a dead landmark a new working life.',
+      need: 'The power station closed in 1983 and became one of London’s best-known ruins. A theme park and several office and housing schemes all failed. A Malaysian consortium bought it in 2012 to restore it as the heart of a new neighbourhood.',
+      site: 'On the south bank of the Thames at Nine Elms, a former industrial riverside opened up for homes and offices. The developers contributed £270 million to the Northern line extension; Battersea Power Station station opened in September 2021.',
+      climate: LDN_CLIMATE, wind: LDN_WIND, windSrc: LDN_WINDSRC, sun: 'N', oriented: true,
+      response: 'The chimneys’ steel reinforcement had corroded, so they were taken down and rebuilt like for like, finished in 2017. The restoration also built an energy centre that supplies the wider scheme.',
+      facts: [['Owners', 'S P Setia, Sime Darby, Employees Provident Fund'], ['Restoration architect', 'WilkinsonEyre'], ['Original', 'J. Theo Halliday; exterior by Giles Gilbert Scott'], ['Engineer', 'BuroHappold'], ['Contractor', 'Mace'], ['New steel', '24,000 t'], ['Uses', 'Apple offices, 140+ shops, 254 homes'], ['Listing', 'Grade II* (2007)'], ['Reopened', '14 October 2022'], ['Award', 'RIBA National Award 2024'], ['Nearest station', 'Battersea Power Station (Northern line, 2021)']],
+      decisions: [
+        ['Rebuild the chimneys', { intent: 'Keep the silhouette Londoners know.', move: 'Corroded chimneys taken down and rebuilt like for like.', result: 'Finished in 2017; one now holds Lift 109.' }, [470, 90], 'materials'],
+        ['Turbine halls as streets', { intent: 'Fill a huge industrial shell with daily life.', move: 'Turbine Halls A and B turned into multi-level shopping streets.', result: 'More than 140 shops, bars and restaurants.' }, [620, 360], 'circulation'],
+        ['Lift 109', { intent: 'Let the public share the building’s best view.', move: 'A glass lift inside the north-west chimney, entered from Turbine Hall A.', result: 'A 360° viewpoint 109 m above the river.' }, null, 'circulation'],
+        ['Offices in the boiler house', { intent: 'Anchor the scheme with a major employer.', move: 'New floors inserted into the old power station.', result: 'Apple’s London campus, about 500,000 sq ft.' }, null, 'circulation'],
+        ['Tube first', { intent: 'Make a riverside site easy to reach.', move: 'Developers helped fund the Northern line extension.', result: 'The station opened in 2021, a year before the building.' }, null, 'site'],
+      ],
+      materials: [['Original', 'Brick, 1929–1955'], ['New', '24,000 t of steelwork'], ['Chimneys', 'Rebuilt like for like, 2017'], ['Lift', 'Glass lift to 109 m']],
+      timeline: [[1929, 'Station A construction begins'], [1933, 'First electricity generated'], [1955, 'Station B in full service'], [1983, 'Power station closes'], [2007, 'Listing raised to Grade II*'], [2012, 'Malaysian consortium buys the site'], [2014, 'Restoration of the building begins'], [2021, 'Northern line extension opens'], [2022, 'Reopens 14 October', 1]],
+      plan: 'battersea',
+    },
+  };
+
+  /* ---------- diagrams ---------- */
+  const C = 170, R = 132;
+  const polar = (deg, r) => [C + r * Math.sin(deg * Math.PI / 180), C - r * Math.cos(deg * Math.PI / 180)];
+  const star = (cx, cy, r) => {
+    const p = [];
+    for (let i = 0; i < 16; i++) { const a = i * Math.PI / 8, rr = i % 2 ? r * .78 : r; p.push(`${(cx + rr * Math.sin(a)).toFixed(1)},${(cy - rr * Math.cos(a)).toFixed(1)}`); }
+    return `<polygon points="${p.join(' ')}" class="d-bld"/>`;
+  };
+  const label = (x, y, t, anchor = 'middle') => `<text class="d-label" x="${x}" y="${y}" text-anchor="${anchor}">${t}</text>`;
+  const PLANS = {
+    lloyds: () => { let t = `<rect x="110" y="110" width="120" height="120" class="d-bld"/><rect x="140" y="140" width="60" height="60" fill="#0a84ff" opacity=".45"/>`;
+      for (const [x, y] of [[96, 96], [244, 96], [258, 170], [244, 244], [96, 244], [82, 170]]) t += `<circle cx="${x}" cy="${y}" r="13" class="d-bld2"/>`;
+      return t + label(170, 290, 'Six service towers around one atrium') + label(170, 68, 'Leadenhall Street') + label(300, 300, 'Lime Street'); },
+    canada: () => `<rect x="20" y="230" width="300" height="60" class="d-water"/>${label(170, 300, 'West India Docks')}<rect x="125" y="110" width="90" height="90" class="d-bld"/><path d="M125,110 L170,155 L215,110 M125,200 L170,155 L215,200" stroke="#000" stroke-opacity=".3" fill="none"/>${label(170, 96, 'Pyramid roof')}<rect x="110" y="205" width="120" height="20" class="d-road" style="fill:rgba(255,255,255,.14)"/>${label(170, 222, 'Canada Square')}`,
+    gherkin: () => `<circle cx="${C}" cy="${C}" r="95" class="d-road" style="fill:rgba(255,255,255,.1)"/>${label(C, 280, 'Public plaza')}<circle cx="${C}" cy="${C}" r="56" class="d-bld"/><circle cx="${C}" cy="${C}" r="18" class="d-bld2"/>${label(C, 90, 'St Mary Axe')}`,
+    shard: () => `<path d="M20,40 C120,70 230,50 320,70 L320,110 C230,92 120,110 20,82 Z" class="d-water"/>${label(170, 62, 'River Thames')}<polygon points="150,150 190,150 205,190 170,215 135,190" class="d-bld"/><rect x="60" y="230" width="220" height="40" class="d-road" style="fill:rgba(255,255,255,.14)"/>${label(170, 255, 'London Bridge station')}`,
+    leadenhall: () => `<polygon points="110,120 230,120 230,225 110,225" class="d-bld"/><rect x="110" y="104" width="120" height="16" class="d-bld2"/>${label(170, 96, 'Service core')}<rect x="60" y="235" width="220" height="22" class="d-road" style="fill:rgba(255,255,255,.14)"/>${label(170, 250, 'Leadenhall Street')}${label(170, 290, 'Public space under the tower')}`,
+    walkie: () => `<path d="M120,120 L220,120 L230,220 L110,220 Z" class="d-bld"/><rect x="60" y="90" width="220" height="20" class="d-road" style="fill:rgba(255,255,255,.14)"/>${label(170, 104, 'Fenchurch Street')}<rect x="236" y="120" width="16" height="110" class="d-road" style="fill:rgba(255,255,255,.14)"/>${label(286, 260, 'Philpot Lane')}`,
+    bloomberg: () => `<rect x="80" y="100" width="80" height="140" class="d-bld"/><rect x="180" y="100" width="80" height="140" class="d-bld"/><rect x="160" y="100" width="20" height="140" class="d-road" style="fill:rgba(100,210,255,.35)"/>${label(170, 92, 'Bloomberg Arcade')}<rect x="60" y="250" width="220" height="20" class="d-road" style="fill:rgba(255,255,255,.14)"/>${label(170, 264, 'Queen Victoria Street')}`,
+    coaldrops: () => `<path d="M20,262 C120,250 220,270 320,256 L320,300 L20,300 Z" class="d-water"/>${label(170, 292, 'Regent’s Canal')}<polygon points="90,230 120,230 165,90 145,90" class="d-bld"/><polygon points="220,230 250,230 195,90 175,90" class="d-bld"/><rect x="145" y="80" width="50" height="18" fill="#0a84ff" opacity=".6"/>${label(170, 72, 'Kissing roofs')}${label(170, 200, 'Yard')}`,
+    bishopsgate: () => `<rect x="125" y="110" width="90" height="110" class="d-bld"/><rect x="230" y="60" width="22" height="220" class="d-road" style="fill:rgba(255,255,255,.14)"/>${label(241, 296, 'Bishopsgate')}${label(170, 96, 'City tower cluster')}`,
+    battersea: () => `<path d="M20,40 C120,64 230,44 320,64 L320,100 C230,84 120,104 20,78 Z" class="d-water"/>${label(170, 58, 'River Thames')}<rect x="90" y="120" width="160" height="100" class="d-bld"/>${[[90, 120], [250, 120], [90, 220], [250, 220]].map(([x, y]) => `<circle cx="${x}" cy="${y}" r="9" fill="#f2ead8"/>`).join('')}<rect x="90" y="120" width="40" height="100" class="d-bld2"/><rect x="210" y="120" width="40" height="100" class="d-bld2"/>${label(110, 238, 'Hall A')}${label(230, 238, 'Hall B')}<rect x="150" y="262" width="40" height="22" class="d-road" style="fill:rgba(255,255,255,.2)"/>${label(170, 300, 'Northern line station')}`,
+  };
+  function siteDiagram(s) {
+    let t = `<circle cx="${C}" cy="${C}" r="${R}" class="d-ring"/>`;
+    for (let d = 0; d < 360; d += 15) { const [x1, y1] = polar(d, R), [x2, y2] = polar(d, R - (d % 90 ? 4 : 9)); t += `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" class="d-tick"/>`; }
+    t += `<text class="d-n" x="${C}" y="${C - R - 8}" text-anchor="middle">N</text>`;
+    const sunR = R - 18;
+    if (s.sun === 'EQ') t += `<line x1="${C - sunR}" y1="${C + 6}" x2="${C + sunR}" y2="${C + 6}" class="d-sun"/><circle cx="${C}" cy="${C + 6}" r="6" class="d-sundot"/>`;
+    else {
+      const sweep = s.sun === 'N' ? 1 : 0;
+      t += `<path d="M${C + sunR},${C} A${sunR},${sunR} 0 0 ${sweep} ${C - sunR},${C}" class="d-sun"/>`;
+      const [sx, sy] = polar(s.sun === 'N' ? 180 : 0, sunR);
+      t += `<circle cx="${sx}" cy="${sy}" r="7" class="d-sundot"/>`;
+    }
+    const plan = PLANS[s.plan]();
+    let w = '';
+    s.wind.forEach(([deg], i) => {
+      const [x1, y1] = polar(deg, R + 26), [x2, y2] = polar(deg, R - 26);
+      const [hx1, hy1] = polar(deg + 6, R - 12), [hx2, hy2] = polar(deg - 6, R - 12);
+      w += `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" class="d-wind"${i ? ' stroke-dasharray="6 5"' : ''}/><polygon points="${x2},${y2} ${hx1},${hy1} ${hx2},${hy2}" class="d-windhead"/>`;
+    });
+    return `<svg viewBox="-20 -20 380 380" role="img" aria-label="Site diagram with north, prevailing wind and sun path">${t}${plan}${w}</svg>`;
+  }
+  function eraBar(s, year) {
+    const x = (y) => 20 + (y - 1900) / 130 * 560;
+    let t = '';
+    for (let y = 1900; y <= 2030; y += 20) t += `<line x1="${x(y)}" y1="40" x2="${x(y)}" y2="46" stroke="rgba(255,255,255,.3)"/><text class="era-t" x="${x(y)}" y="62" text-anchor="middle">${y}</text>`;
+    return `<svg viewBox="0 0 600 70" role="img" aria-label="${s.style}, about ${s.span[0]} to ${s.span[1]}">
+      <rect x="20" y="40" width="560" height="2" fill="rgba(255,255,255,.18)"/>
+      <rect x="${x(s.span[0])}" y="20" width="${x(s.span[1]) - x(s.span[0])}" height="16" rx="8" fill="rgba(10,132,255,.55)"/>
+      <text class="era-b" x="${x(s.span[0]) + 10}" y="32">${s.style}</text>
+      <line x1="${x(year)}" y1="10" x2="${x(year)}" y2="46" stroke="#fff" stroke-width="2"/><circle cx="${x(year)}" cy="10" r="4" fill="#fff"/>
+      ${t}</svg>`;
+  }
+  function gantt(curKey) {
+    const x = (y) => 170 + (y - 1975) / 50 * 410;
+    let t = '';
+    for (let y = 1975; y <= 2025; y += 5) t += `<line x1="${x(y)}" y1="14" x2="${x(y)}" y2="${14 + MARVELS.length * 30}" stroke="rgba(255,255,255,.08)"/><text class="g-axis" x="${x(y)}" y="${30 + MARVELS.length * 30}" text-anchor="middle">${y}</text>`;
+    MARVELS.forEach((m, i) => {
+      const s = STORY[m.key], y = 22 + i * 30, cur = m.key === curKey;
+      t += `<g class="g-row${cur ? ' cur' : ''}"><text class="g-name" x="160" y="${y + 5}" text-anchor="end">${m.name}</text>
+        <line x1="${x(s.designed)}" y1="${y}" x2="${x(s.built[0])}" y2="${y}" stroke="${cur ? '#64d2ff' : 'rgba(255,255,255,.4)'}" stroke-width="2" stroke-dasharray="3 3"/>
+        <rect class="g-bar" x="${x(s.built[0])}" y="${y - 6}" width="${Math.max(6, x(s.built[1]) - x(s.built[0]))}" height="12" fill="${cur ? '#0a84ff' : 'rgba(255,255,255,.55)'}"/></g>`;
+    });
+    return `<svg viewBox="0 0 600 ${44 + MARVELS.length * 30}" role="img" aria-label="Design and construction periods of all seven buildings">${t}</svg>`;
+  }
+
+  /* ---------- circulation: simplified study plans (600 × 400), not measured drawings ---------- */
+  const rm = (x, y, w, h, t, cls = 'c-room', ty) => `<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="6" class="${cls}"/>${t ? `<text class="c-t" x="${x + w / 2}" y="${ty ?? y + h / 2 + 4}" text-anchor="middle">${t}</text>` : ''}`;
+  const tx = (x, y, t, a = 'middle') => `<text class="c-t2" x="${x}" y="${y}" text-anchor="${a}">${t}</text>`;
+  const route = (pts, cls = 'c-route') => `<polyline points="${pts.map((p) => p.join(',')).join(' ')}" class="${cls}"/>`;
+  const stair = (x, y) => { let s = `<rect x="${x}" y="${y}" width="26" height="26" rx="3" class="c-v"/>`; for (let i = 1; i < 5; i++) s += `<line x1="${x + 3}" y1="${y + i * 5.2}" x2="${x + 23}" y2="${y + i * 5.2}" stroke="#000" stroke-opacity=".55"/>`; return s; };
+  const lift = (x, y) => `<rect x="${x}" y="${y}" width="22" height="22" rx="3" class="c-v"/><path d="M${x + 5},${y + 9} l6,-5 l6,5 M${x + 5},${y + 13} l6,5 l6,-5" stroke="#000" stroke-width="1.6" fill="none"/>`;
+  const entry = (x, y, rot = 0) => `<g transform="translate(${x},${y}) rotate(${rot})"><polygon points="0,-11 9,5 -9,5" class="c-in"/></g>`;
+  const stepDots = (steps) => steps.map(([x, y], n) => `<circle cx="${x}" cy="${y}" r="11" class="c-dot"/><text class="c-dn" x="${x}" y="${y + 4}" text-anchor="middle">${n + 1}</text>`).join('');
+  const CIRC = {
+    lloyds: {
+      title: 'One room in the middle, everything else on the outside',
+      draw: () => `<rect x="0" y="370" width="600" height="30" class="c-road"/>${tx(470, 390, 'Lime Street')}
+        <rect x="150" y="70" width="300" height="270" rx="6" class="c-room"/>
+        <rect x="215" y="130" width="170" height="150" rx="6" class="c-core"/>${tx(300, 150, 'Atrium, 60 m high')}${tx(300, 270, 'Underwriting Room')}
+        <line x1="235" y1="250" x2="365" y2="170" stroke="#64d2ff" stroke-width="3"/><line x1="235" y1="170" x2="365" y2="250" stroke="#64d2ff" stroke-width="3"/>${tx(300, 214, 'escalators', 'middle')}
+        ${[[110, 40], [452, 40], [470, 185], [452, 330], [110, 330], [95, 185]].map(([x, y], n) => `<rect x="${x}" y="${y}" width="44" height="44" rx="10" class="c-podium" style="stroke:#fff;stroke-opacity:.5"/>${n % 2 ? stair(x + 9, y + 9) : lift(x + 11, y + 11)}`).join('')}
+        ${tx(132, 30, 'Service tower', 'middle')}${tx(560, 210, 'Lifts', 'middle')}${tx(560, 224, 'and stairs', 'middle')}
+        ${route([[300, 392], [300, 330], [300, 250]])}${route([[300, 250], [255, 175]], 'c-route c-up')}${route([[300, 250], [380, 300], [470, 350]], 'c-route2')}${route([[474, 352], [474, 62]], 'c-route c-up')}${entry(300, 384, 0)}`,
+      steps: [[300, 372, 'Enter from Lime Street'], [300, 300, 'Arrive in the Underwriting Room, under the 60 m atrium'], [252, 170, 'Escalators criss-cross up to the first three galleries'], [430, 330, 'Glass lifts in the outside towers reach the upper floors'], [474, 100, 'The Adam Room, rebuilt on the 11th floor']],
+      lesson: 'Rogers separated what changes from what lasts. Floors and the central Room stay open; lifts, stairs and pipes live outside, where they can be replaced without stopping the market.',
+      prompt: 'Draw the plan twice: once with the services inside, once outside. How much open floor does each version give you?',
+    },
+    canada: {
+      title: 'Through the mall, across the lobby, up the core',
+      draw: () => `<rect x="170" y="40" width="260" height="270" rx="6" class="c-room"/>
+        <rect x="250" y="120" width="100" height="100" rx="6" class="c-core"/>${[0, 1, 2].map((i) => [0, 1].map((j) => lift(258 + i * 30, 132 + j * 44)).join('')).join('')}${tx(300, 110, 'Central core: lifts')}
+        <rect x="185" y="250" width="230" height="45" rx="6" class="c-terr c-room"/>${tx(320, 270, 'Marble lobby, 11 m high')}
+        <rect x="150" y="330" width="300" height="34" rx="6" class="c-road"/>${tx(335, 352, 'Canada Square', 'start')}
+        <rect x="20" y="372" width="560" height="24" rx="4" class="c-under"/>${tx(80, 390, 'Mall and stations below', 'start')}
+        ${route([[60, 384], [300, 384], [300, 330], [300, 280], [300, 220]])}${route([[300, 220], [300, 60]], 'c-route c-up')}${entry(300, 322, 0)}`,
+      steps: [[60, 384, 'Arrive by the Jubilee line, Elizabeth line or DLR, through the mall'], [300, 345, 'Come up to Canada Square'], [200, 272, 'Cross the 11 m marble lobby'], [300, 170, 'Lifts in the central core'], [300, 60, 'Up to 50 floors of offices']],
+      lesson: 'A classic central-core tower: everything vertical sits in the middle, offices wrap around the outside for daylight. Simple, efficient, and copied around the world.',
+      prompt: 'Measure the core against the floor plate. What share of the floor is lifts and stairs, and how would that change at 70 floors?',
+    },
+    gherkin: {
+      title: 'A round plan with a twist',
+      draw: () => {
+        let wells = '';
+        for (let i = 0; i < 6; i++) {
+          const a = i * Math.PI / 3 + .3, b = a + .32;
+          const p = (r, t) => `${(200 + r * Math.sin(t)).toFixed(1)},${(200 - r * Math.cos(t)).toFixed(1)}`;
+          wells += `<polygon points="${p(150, a)} ${p(150, b)} ${p(70, (a + b) / 2)}" class="c-upper c-room"/>`;
+        }
+        return `<circle cx="200" cy="200" r="178" class="c-podium"/>${tx(200, 392, 'Plaza')}
+          <circle cx="200" cy="200" r="150" class="c-room"/>${wells}
+          <circle cx="200" cy="200" r="45" class="c-core"/>${lift(178, 178)}${lift(200, 200)}${tx(200, 260, 'Central core')}${tx(330, 70, 'Lightwells turn 5° per floor', 'start')}
+          <path d="M440,380 C430,250 450,120 520,40 C590,120 610,250 600,380 Z" class="c-room"/>${tx(520, 404, 'Section')}
+          <line x1="450" y1="122" x2="590" y2="122" stroke="#fff" stroke-opacity=".5"/>${tx(594, 126, '34', 'start')}
+          <line x1="480" y1="70" x2="560" y2="70" stroke="#fff" stroke-opacity=".5"/>${tx(594, 74, '39', 'start')}
+          <line x1="500" y1="52" x2="540" y2="52" stroke="#fff" stroke-opacity=".5"/>${tx(594, 56, '40', 'start')}
+          ${route([[200, 392], [200, 300], [200, 230]])}${route([[520, 380], [520, 122]], 'c-route c-up')}${route([[520, 122], [520, 70]], 'c-route2')}${route([[520, 70], [520, 52]], 'c-route c-up')}${entry(200, 384, 0)}`;
+      },
+      steps: [[200, 330, 'Cross the plaza into the lobby'], [200, 200, 'Lifts in the central core'], [520, 250, 'The main lifts rise to the 34th floor'], [545, 96, 'A second lift, pushed from below, reaches the 39th floor'], [520, 40, 'Stairs up to the bar under the glass dome']],
+      lesson: 'Rotating a simple plan creates complexity for free: every floor is the same, but the lightwells spiral, so daylight and air reach the middle of a deep round floor.',
+      prompt: 'Draw three floor plans, each turned 5°. Overlay them and trace how a lightwell climbs.',
+    },
+    shard: {
+      title: 'A vertical town over a station',
+      draw: () => `<polygon points="210,380 390,380 318,24 282,24" class="c-room"/>
+        ${[[330, 'Offices'], [232, 'Restaurants 31–33'], [190, 'Hotel 34–52'], [124, 'Homes 53–65'], [64, 'The View 68–72']].map(([y, t]) => `<line x1="${210 + (380 - y) * .25}" y1="${y}" x2="${390 - (380 - y) * .25}" y2="${y}" stroke="#fff" stroke-opacity=".35"/>${tx(420, y + 4, t, 'start')}`).join('')}
+        <rect x="120" y="382" width="360" height="16" rx="4" class="c-under"/>${tx(110, 394, 'London Bridge station', 'end')}
+        ${route([[300, 392], [300, 330]])}${route([[300, 330], [300, 64]], 'c-route c-up')}${entry(300, 386, 0)}`,
+      steps: [[300, 372, 'Arrive at London Bridge station, at the foot of the tower'], [300, 330, 'Office lobbies and lifts for the lower floors'], [300, 232, 'Restaurants, then the hotel from the 34th floor'], [300, 124, 'Homes higher up, on smaller floors'], [300, 64, 'The View from The Shard, 244 m up']],
+      lesson: 'The taper is functional: big floors at the bottom suit offices, smaller floors near the top suit homes and a viewing deck. The building’s shape follows its mix of uses.',
+      prompt: 'List the uses floor by floor and sketch the floor area each one needs. Does your stack produce a taper?',
+    },
+    leadenhall: {
+      title: 'Open floors, lifts on the outside',
+      draw: () => `<rect x="130" y="40" width="340" height="60" rx="6" class="c-core"/>${[0, 1, 2, 3, 4, 5].map((i) => lift(160 + i * 50, 58)).join('')}${tx(300, 32, 'Glazed service core: lifts and plant')}
+        <rect x="130" y="100" width="340" height="170" rx="6" class="c-room"/>${tx(300, 190, 'Column-free office floor')}
+        <path d="M130,100 L215,270 L300,100 L385,270 L470,100" stroke="#64d2ff" stroke-opacity=".5" stroke-width="3" fill="none"/>${tx(486, 190, 'Megaframe', 'start')}
+        <rect x="90" y="290" width="420" height="80" rx="6" class="c-podium"/>${tx(300, 357, 'Public space, 30 m high')}
+        <rect x="430" y="300" width="60" height="40" class="c-steps"/>${tx(460, 356, 'Escalators')}
+        <rect x="40" y="378" width="520" height="20" rx="4" class="c-road"/>${tx(300, 393, 'Leadenhall Street')}
+        ${route([[300, 392], [300, 330], [460, 320]])}${route([[460, 320], [460, 270]], 'c-route c-up')}${route([[460, 270], [400, 100], [400, 70]], 'c-route2')}${route([[300, 70], [300, 100]], 'c-route c-up')}${entry(300, 384, 0)}`,
+      steps: [[300, 372, 'Walk in from Leadenhall Street'], [300, 330, 'Through the 30 m public space under the tower'], [460, 300, 'Escalators up to the raised lobby'], [400, 70, 'Lifts in the glazed core on the flat side'], [200, 230, 'Open floors, with no core in the middle']],
+      lesson: 'Moving the core to one side and the structure to the perimeter leaves the whole floor open. The cost is a tower whose lifts and bracing are always on show, so they were designed to be seen.',
+      prompt: 'Sketch a floor with a central core, then with a side core. Mark the best desks in each.',
+    },
+    walkie: {
+      title: 'Two front doors: offices and the Sky Garden',
+      draw: () => `<path d="M230,380 L370,380 L410,90 C410,70 400,60 380,58 L220,58 C200,60 190,70 190,90 Z" class="c-room"/>
+        <rect x="200" y="58" width="200" height="44" rx="6" class="c-upper c-room"/>${tx(300, 84, 'Sky Garden, 35–37')}
+        <line x1="215" y1="230" x2="385" y2="230" stroke="#fff" stroke-opacity=".35"/>${tx(420, 234, 'Floor 20', 'start')}
+        ${tx(150, 320, 'Low-rise lifts', 'end')}${tx(150, 170, 'High-rise lifts', 'end')}
+        <rect x="455" y="58" width="22" height="322" rx="4" class="c-under"/>${tx(500, 220, 'Express lifts', 'start')}
+        <rect x="40" y="380" width="520" height="18" rx="4" class="c-road"/>${tx(160, 394, 'Fenchurch Street (offices)')}${tx(470, 394, 'Philpot Lane (Sky Garden)')}
+        ${route([[260, 392], [260, 230]], 'c-route c-up')}${route([[285, 392], [285, 110]], 'c-route c-up')}${route([[466, 392], [466, 80], [400, 80]])}${entry(272, 386, 0)}${entry(466, 386, 0)}`,
+      steps: [[240, 372, 'Office staff enter from Fenchurch Street'], [240, 300, 'Seven double-deck lifts serve up to the 20th floor'], [305, 160, 'Seven more serve the floors above'], [490, 372, 'Visitors enter separately on Philpot Lane'], [440, 110, 'Two express lifts rise to the Sky Garden']],
+      lesson: 'Separating public and private routes made a public garden possible in a private office tower: visitors never cross the office lobby.',
+      prompt: 'Draw the ground floor with two entrances. What security, queueing and lift space does the public route need?',
+    },
+    bloomberg: {
+      title: 'Up by lift, down by ramp',
+      draw: () => `<rect x="40" y="50" width="230" height="300" rx="6" class="c-room"/><rect x="330" y="50" width="230" height="300" rx="6" class="c-room"/>
+        <rect x="270" y="50" width="60" height="300" class="c-road"/>${tx(300, 40, 'Bloomberg Arcade')}
+        <rect x="270" y="120" width="60" height="14" fill="#64d2ff" opacity=".6"/><rect x="270" y="240" width="60" height="14" fill="#64d2ff" opacity=".6"/>${tx(300, 160, 'Bridges')}
+        <ellipse cx="155" cy="190" rx="80" ry="55" fill="none" stroke="#c98a4a" stroke-width="10"/>${tx(155, 266, 'Bronze ramp, 210 m')}
+        <circle cx="155" cy="320" r="22" class="c-core"/>${tx(155, 292, 'Vortex entrance', 'middle')}
+        ${lift(230, 300)}${tx(230, 290, 'Glass lifts', 'middle')}
+        <rect x="380" y="270" width="140" height="60" rx="6" class="c-dark"/>${tx(450, 304, 'Mithraeum (below)')}
+        <rect x="20" y="370" width="560" height="26" rx="4" class="c-road"/>${tx(300, 388, 'Queen Victoria Street')}
+        ${route([[155, 392], [155, 320], [241, 312]])}${route([[241, 312], [241, 150]], 'c-route c-up')}${route([[235, 190], [155, 135], [75, 190], [155, 245]], 'c-route2')}${route([[270, 127], [330, 127]])}${entry(155, 384, 0)}`,
+      steps: [[155, 372, 'Enter through the timber Vortex'], [241, 240, 'Glass lifts rise to the sixth-floor pantry'], [80, 190, 'Walk down the bronze ramp, meeting colleagues on the way'], [300, 127, 'Bridges cross the public arcade between the two buildings'], [450, 270, 'The Roman Mithraeum, open to the public']],
+      lesson: 'Foster made the slow route the social one. Lifts take you up to a shared floor, and the ramp brings you down past every team, designed for chance meetings.',
+      prompt: 'Map who meets whom on your way through an office you know. Where would a ramp or a shared stair change that?',
+    },
+    coaldrops: {
+      title: 'Two sheds, one yard, one new roof',
+      draw: () => `<polygon points="60,380 160,380 290,70 250,70" class="c-room"/><polygon points="540,380 440,380 310,70 350,70" class="c-room"/>
+        ${tx(140, 260, 'East drops, 1851', 'middle')}${tx(460, 260, 'West drops, 1860', 'middle')}
+        <path d="M245,60 C270,30 330,30 355,60 L330,100 L270,100 Z" class="c-upper c-room"/>${tx(300, 24, 'Kissing roofs: new upper floor')}
+        <polygon points="160,380 440,380 330,100 270,100" class="c-podium"/>${tx(300, 300, 'Yard')}
+        <rect x="20" y="382" width="560" height="16" rx="4" class="c-road"/>${tx(300, 395, 'From Granary Square and the canal')}
+        ${route([[300, 392], [300, 140]])}${route([[300, 140], [300, 70]], 'c-route c-up')}${route([[300, 230], [200, 230]], 'c-route2')}${route([[300, 200], [400, 200]], 'c-route2')}${entry(300, 386, 0)}`,
+      steps: [[300, 360, 'Walk up from Granary Square and the canal'], [300, 270, 'Into the open yard between the sheds'], [200, 230, 'Shops in the Victorian arches on two levels'], [300, 70, 'Up to the new floor under the kissing roofs']],
+      lesson: 'Heatherwick kept the yard open and put the new floor where the sheds meet, so the walk from the canal ends at the most surprising space.',
+      prompt: 'Sketch the yard in section. Where does the roof shelter people, and where does it open to the sky?',
+    },
+    bishopsgate: {
+      title: 'A vertical village with lift-assisted escape',
+      draw: () => `<rect x="220" y="30" width="160" height="350" rx="6" class="c-room"/>
+        <rect x="220" y="30" width="160" height="34" rx="6" class="c-upper c-room"/>${tx(300, 52, 'Horizon 22, floor 58')}
+        <rect x="220" y="300" width="160" height="80" rx="6" class="c-podium"/>${tx(300, 336, 'Market, gym, bikes')}
+        ${[0, 1, 2].map((i) => `<rect x="${236 + i * 48}" y="${280 - i * 70}" width="28" height="${i * 70 + 20}" fill="none" stroke="#64d2ff" stroke-dasharray="4 4"/>`).join('')}${tx(400, 230, 'Double-deck lift groups', 'start')}
+        <rect x="40" y="382" width="520" height="16" rx="4" class="c-road"/>${tx(300, 395, 'Bishopsgate')}
+        <rect x="420" y="30" width="20" height="350" rx="4" class="c-under"/>${tx(450, 60, 'Gallery lifts', 'start')}
+        ${route([[300, 392], [300, 340]])}${route([[250, 300], [250, 220]], 'c-route c-up')}${route([[298, 300], [298, 150]], 'c-route c-up')}${route([[346, 300], [346, 80]], 'c-route c-up')}${route([[430, 392], [430, 47], [380, 47]])}${entry(300, 386, 0)}`,
+      steps: [[300, 372, 'Enter from Bishopsgate'], [236, 357, 'Shared floors: food market, gym, bike park'], [298, 230, 'Three groups of double-deck lifts, also used for evacuation'], [455, 372, 'A separate route for Horizon 22 visitors'], [430, 47, 'The free gallery, 254 m up']],
+      lesson: 'At 12,000 people, circulation is the building. Grouped double-deck lifts carry the crowd every day, and the same lifts are part of the escape plan.',
+      prompt: 'If 12,000 people arrive between 8 and 9 a.m., how many lift trips is that? Sketch how you would split the lift groups.',
+    },
+    battersea: {
+      title: 'Turbine halls as streets, a chimney as a lift',
+      draw: () => `<path d="M0,0 L600,0 L600,40 C400,56 200,30 0,48 Z" class="c-water"/>${tx(300, 24, 'River Thames')}
+        <rect x="80" y="80" width="440" height="230" rx="6" class="c-room"/>
+        <rect x="80" y="80" width="130" height="230" class="c-podium"/>${tx(145, 200, 'Turbine Hall A')}
+        <rect x="390" y="80" width="130" height="230" class="c-podium"/>${tx(455, 200, 'Turbine Hall B')}
+        ${tx(300, 190, 'Boiler house:')}${tx(300, 204, 'Apple offices above')}
+        ${[[80, 80], [520, 80], [80, 310], [520, 310]].map(([x, y]) => `<circle cx="${x}" cy="${y}" r="16" fill="#f2ead8"/>`).join('')}${tx(80, 60, 'Lift 109', 'middle')}
+        <rect x="250" y="350" width="100" height="40" rx="6" class="c-core"/>${tx(300, 374, 'Tube station')}
+        ${route([[300, 350], [300, 312]])}${route([[300, 312], [145, 240], [145, 110]])}${route([[145, 110], [82, 82]], 'c-route c-up')}${route([[300, 312], [455, 240]], 'c-route2')}${entry(300, 330, 0)}`,
+      steps: [[300, 345, 'Arrive on the Northern line extension'], [300, 290, 'Enter the restored power station'], [145, 240, 'Turbine Hall A: shops and the Lift 109 exhibition'], [100, 120, 'Glass lift up the north-west chimney to 109 m'], [455, 240, 'Turbine Hall B: more shops and restaurants']],
+      lesson: 'The restoration kept the building’s bones and turned its biggest spaces into public streets. The chimney, once pure machinery, became the best viewpoint.',
+      prompt: 'Find a disused industrial building near you. Which of its spaces could become a street, a square or a viewpoint?',
+    },
+  };
+  function circulation(key) {
+    const c = CIRC[key];
+    return `<section id="s-circulation">
+        <div class="kicker">Circulation</div>
+        <h3>${c.title}</h3>
+        <div class="split circ">
+          <div class="panel glass plan"><div class="pscroll"><svg viewBox="-10 -10 620 420" role="img" aria-label="Simplified plan showing how people move through the building">${c.draw()}${stepDots(c.steps)}</svg></div><p class="pswipe">Swipe the plan sideways to see all of it.</p>
+            <div class="legend"><span><i style="background:#0a84ff"></i>Main route</span><span><i style="background:#64d2ff"></i>Up a level</span><span><i style="background:rgba(255,255,255,.6)"></i>Other routes</span><span><i style="background:#30d158;height:8px;width:8px;border-radius:2px"></i>Entry</span><span><i style="background:#fff;height:8px;width:8px;border-radius:2px"></i>Stairs and lifts</span></div>
+            <p class="cap">Simplified study diagram, redrawn and not to scale. Check details against the published plans.</p>
+          </div>
+          <div class="stack">
+            <ol class="walk">${c.steps.map((s, n) => `<li><b>${n + 1}</b>${s[2]}</li>`).join('')}</ol>
+            <div class="panel glass"><h4>The lesson</h4><p>${c.lesson}</p></div>
+            <div class="panel glass sketch"><h4>Sketch this</h4><p>${c.prompt}</p></div>
+          </div>
+        </div>
+      </section>`;
+  }
+
+  // every design decision reads as intent, move, result
+  const imr = (o) => typeof o === 'string' ? `<p>${o}</p>` : `<dl class="imr"><div><dt>Intent</dt><dd>${o.intent}</dd></div><div><dt>Move</dt><dd>${o.move}</dd></div><div><dt>Result</dt><dd>${o.result}</dd></div></dl>`;
+  function renderStory(i) {
+    const m = MARVELS[i], s = STORY[m.key];
+    const yrs = s.built[1] - s.built[0];
+    const cw0 = m.img.cw || 1000, ix = m.img.x || 0, ih = (cw0 * m.img.h / m.img.w) / 6.25;
+    const fpos = `top:${m.img.y / 6.25}%;height:${ih}%;left:${ix / 10}%;width:${cw0 / 10}%`;
+    const pinned = s.decisions.map((d, n) => [d, n]).filter(([d]) => d[2]);
+    const next = MARVELS[i + 1];
+    const lessonOne = CIRC[m.key].lesson.split('. ')[0] + '.';
+    const nav = [['s-overview', 'Overview'], ['s-circulation', 'Circulation'], ['s-site', 'Site & climate'], ['s-decisions', 'Decisions'], ['s-style', 'Style'], ['s-materials', 'Materials'], ['s-timeline', 'Timeline'], ['s-sources', 'Sources']];
+    $('story').innerHTML = `
+      <nav class="snav glass" aria-label="Story sections">${nav.map(([id, t]) => `<button type="button" data-go="${id}">${t}</button>`).join('')}</nav>
+      <section id="s-overview">
+        <div class="kicker">The story · ${m.city}</div>
+        <h2>${m.name}</h2>
+        <div class="takeaways">
+          <div class="glass"><span>Why it exists</span>${s.why}</div>
+          <div class="glass"><span>The big idea</span>${s.decisions[0][0]}</div>
+          <div class="glass"><span>Lesson for your work</span>${lessonOne}</div>
+        </div>
+        <p class="lead">${s.need}</p>
+        <div class="chips"><span class="chip style">${s.style}</span><span class="chip">${m.architect}</span><span class="chip">${s.climate.split(' (')[0]}</span></div>
+      </section>
+      <section>
+        <div class="kicker">Key facts</div>
+        <dl class="kfacts">${s.facts.map(([k, v]) => `<div class="glass"><dt>${k}</dt><dd>${v}</dd></div>`).join('')}</dl>
+      </section>
+      ${circulation(m.key)}
+      <section id="s-site">
+        <div class="kicker">Site, zoning and climate</div>
+        <h3>Where it stands, and what it answers to</h3>
+        <div class="split">
+          <div class="panel glass diagram">${siteDiagram(s)}
+            <div class="legend"><span><i style="background:#64d2ff"></i>Prevailing wind: ${s.wind.map((w) => w[1]).join(' and ')}</span><span><i style="background:#ffd60a"></i>Sun path</span></div>
+            <p class="cap">Plan diagram, not to scale. ${s.oriented ? 'Oriented with north up.' : 'Building orientation is schematic.'} Wind: ${s.windSrc}</p>
+          </div>
+          <div class="stack">
+            <div><h4>Location and zoning</h4><p>${s.site}</p></div>
+            <div><h4>Climate · ${s.climate}</h4><p>${s.response}</p></div>
+            <div><h4>Coordinates</h4><p>${m.coords}</p></div>
+          </div>
+        </div>
+      </section>
+      <section id="s-decisions">
+        <div class="kicker">Design decisions</div>
+        <h3>${s.decisions.length} choices that made it</h3>
+        <div class="figure" id="fig">
+          ${cw0 < 1000 ? `<img src="photos/${m.key}-bg.jpg" alt="" style="top:0;left:0;width:100%;height:100%;object-fit:cover;filter:blur(18px) brightness(.8);transform:scale(1.15)">` : ''}<img src="photos/${m.key}-bg.jpg" alt="" style="${fpos}">
+          <img src="photos/${m.key}-hero.webp" alt="${m.name}, annotated" style="${fpos}">
+          ${pinned.map(([d, n]) => `<span class="pin" data-n="${n}" style="left:${d[2][0] / 10}%;top:${d[2][1] / 6.25}%">${n + 1}</span>`).join('')}
+        </div>
+        <ol class="decisions">${s.decisions.map((d, n) => `<li class="glass" id="d-${n}" data-n="${n}"><b class="${d[2] ? '' : 'off'}">${n + 1}</b><h4>${d[0]}</h4>${imr(d[1])}${d[3] ? `<button type="button" class="rel" data-go="s-${d[3]}">See ${LINKNAME[d[3]]} →</button>` : ''}</li>`).join('')}</ol>
+      </section>
+      <section id="s-style">
+        <div class="kicker">Architectural style</div>
+        <h3>${s.style}</h3>
+        <p class="body">${s.styleNote}</p>
+        <div class="panel glass era">${eraBar(s, m.year)}</div>
+        <p class="body" style="color:var(--label-2)">Related buildings: ${s.relatives}</p>
+      </section>
+      <section id="s-materials">
+        <div class="kicker">Structure and materials</div>
+        <div class="mats">${s.materials.map(([k, v]) => `<div class="glass"><span>${k}</span>${v}</div>`).join('')}</div>
+      </section>
+      <section id="s-timeline">
+        <div class="kicker">Timeline</div>
+        <ol class="tl">${s.timeline.map(([y, e, key]) => `<li class="${key ? 'key' : ''}"><div class="y">${y}</div><div class="e">${e}</div></li>`).join('')}</ol>
+      </section>
+      <section>
+        <div class="kicker">One century, seven buildings</div>
+        <h3>From first design to opening day</h3>
+        <div class="panel glass gantt">${gantt(m.key)}
+          <div class="legend"><span><i style="background:rgba(255,255,255,.4)"></i>Design to ground-breaking</span><span><i style="background:#0a84ff;height:8px"></i>Construction</span></div>
+        </div>
+      </section>
+      <section id="s-sources">
+        <div class="kicker">Sources</div>
+        <p class="body" style="color:var(--label-2)">Facts checked in October 2026. Wind directions come from London City Airport weather records (METAR, via the Iowa Environmental Mesonet) for 2019–2023. Plans are simplified study diagrams; use published drawings for measured work.</p>
+        <ul class="srcs">${SOURCES[m.key].map(([t, u]) => `<li><a href="${u}" target="_blank" rel="noopener">${t}</a></li>`).join('')}</ul>
+      </section>
+      ${next ? `<div class="nextup"><button class="capsule glass" type="button" id="nextStory">Next: ${next.name}, ${next.year} →</button></div>` : ''}`;
+    $('story').querySelectorAll('.decisions li').forEach((li) => {
+      const pin = $('story').querySelector(`.pin[data-n="${li.dataset.n}"]`);
+      if (!pin) return;
+      li.addEventListener('mouseenter', () => pin.classList.add('hot'));
+      li.addEventListener('mouseleave', () => pin.classList.remove('hot'));
+    });
+    $('nextStory')?.addEventListener('click', () => { go(cur + 1); scrollTo({ top: 0, behavior: reduced ? 'auto' : 'smooth' }); });
+    $('story').querySelectorAll('[data-go]').forEach((b) => b.addEventListener('click', () => jump(b.dataset.go)));
+  }
+  function jump(id, flash) {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.scrollIntoView({ behavior: reduced ? 'auto' : 'smooth', block: 'start' });
+    if (flash) { el.classList.add('flash'); setTimeout(() => el.classList.remove('flash'), 1600); }
+  }
+  const LINKNAME = { circulation: 'circulation', site: 'site and climate', materials: 'materials', style: 'style' };
+  const SOURCES = {
+    lloyds: [['Lloyd’s building, Wikipedia', 'https://en.wikipedia.org/wiki/Lloyd%27s_building'], ['The Lloyd’s building, Lloyd’s', 'https://www.lloyds.com/about-lloyds/the-lloyds-building'], ['High-tech inside out, Dezeen', 'https://www.dezeen.com/2019/11/19/lloyds-building-richard-rogers-high-tech-london/']],
+    canada: [['One Canada Square, Wikipedia', 'https://en.wikipedia.org/wiki/One_Canada_Square']],
+    gherkin: [['30 St Mary Axe, Wikipedia', 'https://en.wikipedia.org/wiki/30_St_Mary_Axe'], ['30 St Mary Axe, Harvard Design Magazine', 'https://www.harvarddesignmagazine.org/?p=1682']],
+    shard: [['The Shard, Wikipedia', 'https://en.wikipedia.org/wiki/The_Shard'], ['London Bridge Tower, Arquitectura Viva', 'https://arquitecturaviva.com/works/torre-london-bridge-8']],
+    leadenhall: [['Leadenhall Building, Wikipedia', 'https://en.wikipedia.org/wiki/Leadenhall_Building']],
+    walkie: [['20 Fenchurch Street, Wikipedia', 'https://en.wikipedia.org/wiki/20_Fenchurch_Street'], ['Sky Garden opens, Dezeen', 'https://www.dezeen.com/2015/01/12/sky-garden-rafael-vinoly-walkie-talkie-skyscraper-london-20-fenchurch-street/']],
+    bloomberg: [['Bloomberg London, Wikipedia', 'https://en.wikipedia.org/wiki/Bloomberg_London'], ['Bloomberg HQ launch, Foster + Partners', 'https://www.fosterandpartners.com/news/bloomberg-s-new-european-headquarters-launched-in-the-city-of-london'], ['Construction start, Bloomberg Live', 'https://events.bloomberglive.com/bloomberg-design-make-2023/page/2630128/venue']],
+    coaldrops: [['Coal Drops Yard, Wikipedia', 'https://en.wikipedia.org/wiki/Coal_Drops_Yard']],
+    bishopsgate: [['22 Bishopsgate, Wikipedia', 'https://en.wikipedia.org/wiki/22_Bishopsgate'], ['Lift evacuation strategy, WSP', 'https://www.wsp.com/en-me/insights/22-bishopsgate-our-unique-passenger-lift-fire-evacuation-solution'], ['Lift design, Elevator World', 'https://elevatorworld.com/article/a-vision-evolves/']],
+    battersea: [['Battersea Power Station, Wikipedia', 'https://en.wikipedia.org/wiki/Battersea_Power_Station'], ['Phase 2, Steel Construction', 'https://steelconstruction.info/Battersea_Power_Station_Phase_2'], ['Lift 109, Battersea Power Station', 'https://batterseapowerstation.co.uk/news/bps-chimney-lift-experience-named-lift-109/']],
+  };
+  /* ---------- construction story: how each building went up, layer by layer ----------
+     ground: card y where the building meets its site; the site below it is there from the start.
+     steel: the structure is a steel frame (shown steel-blue) rather than concrete or stone (grey). */
+  const BUILD = {
+    lloyds: { ground: 470, plan: 'Rogers’s team designs the building inside out', struct: 'Reinforced concrete frame and columns', skin: 'Steel-clad service towers, glass lifts and the glass atrium roof', finish: 'Opened by Queen Elizabeth II, 18 November 1986' },
+    canada: { ground: 590, steel: true, plan: 'Pelli’s tower for the new Canary Wharf', struct: 'About 27,500 t of steel on 222 piles in the old dock', skin: 'Stainless-steel cladding and a 40 m pyramid', finish: 'Opened 26 August 1991' },
+    gherkin: { ground: 600, steel: true, plan: 'Foster + Partners’ tapering tower, approved in 2000', struct: 'Steel diagrid around a central core', skin: 'Flat glass panels and the curved glass lens', finish: 'Opened 28 April 2004' },
+    shard: { ground: 500, plan: 'Piano’s spire, given consent in 2003', struct: 'Concrete core built top-down, post-tensioned floors', skin: '11,000 panes of extra-white glass', finish: 'Inaugurated 5 July 2012' },
+    leadenhall: { ground: 600, steel: true, plan: 'The wedge that keeps St Paul’s in view', struct: 'Perimeter steel megaframe', skin: 'Glass over the bracing; glazed service core', finish: 'Opened July 2014' },
+    walkie: { ground: 625, plan: 'Viñoly’s top-heavy tower, approved in 2007', struct: 'Concrete core, then steel frame', skin: 'Glass facade, shading added in 2014', finish: 'Completed August 2014' },
+    bloomberg: { ground: 625, plan: 'Foster + Partners design around an open newsroom', struct: 'The helical ramp threads through the floors', skin: 'Bronze cladding on the ramp', finish: 'Opened October 2017' },
+    coaldrops: { ground: 600, steel: true, plan: 'Heatherwick’s plan to join two Victorian sheds', struct: 'New steel roof on 54 columns', skin: 'Welsh slate and glazing', finish: 'Opened 26 October 2018' },
+    bishopsgate: { ground: 600, plan: 'PLP’s vertical village, after the Pinnacle core is removed', struct: 'The frame rises on the cleared site', skin: 'Glass curtain wall', finish: 'Completed 2020' },
+    battersea: { ground: 470, steel: true, plan: 'WilkinsonEyre’s restoration plan', struct: '24,000 t of new steelwork inside the old shell', skin: 'Restored brick and rebuilt chimneys', finish: 'Reopened 14 October 2022' },
+  };
+  /* ---------- build the depth planes ---------- */
+  const DEPTH = { photo: 0, title: 70, hero: 150, fore: 215, pins: 190 };
+  const stage = $('stage');
+  const wall = $('wallpaper');
+  const svg = (inner) => `<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" aria-hidden="true">${inner}</svg>`;
+
+  const cards = MARVELS.map((m) => {
+    const cw0 = m.img.cw || 1000, ix = m.img.x || 0, ih = Math.round(cw0 * m.img.h / m.img.w);
+    const img = (src, extra = '') => `<image href="photos/${m.key}-${src}" x="${ix}" y="${m.img.y}" width="${cw0}" height="${ih}" preserveAspectRatio="none" ${extra}/>`;
+    // portrait photos sit in a blurred, stretched copy of themselves, like an iPhone wallpaper
+    const ext = cw0 < 1000 ? `<image href="photos/${m.key}-bg.jpg" x="-60" y="-140" width="1120" height="905" preserveAspectRatio="xMidYMid slice" style="filter:blur(22px) brightness(.8)"/>` : '';
+    const ts = m.title.s || 190;
+    const k = m.key;
+    const planes = {
+      photo: svg(`<defs><clipPath id="${k}-c"><rect width="${W}" height="${H}" rx="46"/></clipPath></defs><g clip-path="url(#${k}-c)">${ext}${img('bg.jpg')}</g>`),
+      title: svg(`<g text-anchor="middle" fill="${m.title.ink}" style="font-family:var(--sf-display)">
+          <text x="${m.title.x}" y="${(m.title.y + 40 - ts * .83).toFixed(0)}" style="font-size:${Math.max(20, ts * .14).toFixed(0)}px;font-weight:600;letter-spacing:.2px" opacity=".92">${m.city}</text>
+          <text class="yr" x="${m.title.x}" y="${m.title.y + 40}" style="font-size:${ts}px;font-weight:700;letter-spacing:${(-ts / 32).toFixed(1)}px">${m.year}</text></g>`),
+      // the building plane doubles as the construction story: site, blueprint, structure, then the finished skin
+      hero: svg(`<defs><clipPath id="${k}-h"><rect x="0" y="-600" width="${W}" height="${H + 600}" rx="46"/></clipPath>
+          <clipPath id="${k}-site"><rect x="-50" y="${BUILD[k].ground}" width="1100" height="${H - BUILD[k].ground + 50}"/></clipPath>
+          <clipPath id="${k}-cl"><rect class="b-cl" x="-50" y="${BUILD[k].ground}" width="1100" height="0"/></clipPath>
+          <clipPath id="${k}-cs"><rect class="b-cs" x="-50" y="${BUILD[k].ground}" width="1100" height="0"/></clipPath>
+          <clipPath id="${k}-ck"><rect class="b-ck" x="-50" y="-600" width="1100" height="${BUILD[k].ground + 600}"/></clipPath>
+          <linearGradient id="${k}-hg" gradientUnits="userSpaceOnUse" x1="0" y1="${m.img.y}" x2="0" y2="${m.img.y + 110}"><stop offset="0" stop-color="#fff" stop-opacity="0"/><stop offset="1" stop-color="#fff"/></linearGradient>
+          <mask id="${k}-hm" maskUnits="userSpaceOnUse" x="-100" y="-700" width="1200" height="1400"><rect x="-100" y="-700" width="1200" height="1400" fill="url(#${k}-hg)"/></mask>
+          <pattern id="${k}-grid" width="25" height="25" patternUnits="userSpaceOnUse"><path d="M25 0H0V25" fill="none" stroke="#9fd4ff" stroke-opacity=".32" stroke-width="1"/></pattern></defs>
+          <rect class="b-grid" x="0" y="0" width="${W}" height="${BUILD[k].ground}" fill="url(#${k}-grid)" opacity="0"/>
+          <g clip-path="url(#${k}-h)" mask="url(#${k}-hm)">
+            <g clip-path="url(#${k}-site)">${img('hero.webp')}</g>
+            <g clip-path="url(#${k}-cs)">${img('hero.webp', `style="filter:${BUILD[k].steel ? 'grayscale(1) sepia(.35) hue-rotate(175deg) brightness(.85) contrast(1.15)' : 'grayscale(1) brightness(1.04) contrast(.88)'}"`)}</g>
+            <g clip-path="url(#${k}-ck)">${img('hero.webp')}</g>
+            <g class="b-lines" opacity="0" clip-path="url(#${k}-cl)">${img('lines.webp')}</g>
+          </g>`),
+      fore: svg(`<defs><linearGradient id="${k}-fg" x1="0" y1="0" x2="0" y2="1"><stop offset="${(m.fore - 40) / H}" stop-color="#fff" stop-opacity="0"/><stop offset="${m.fore / H}" stop-color="#fff"/></linearGradient>
+          <mask id="${k}-fm" maskUnits="userSpaceOnUse" x="0" y="0" width="${W}" height="${H}"><rect width="${W}" height="${H}" fill="url(#${k}-fg)"/></mask>
+          <clipPath id="${k}-fc"><rect width="${W}" height="${H}" rx="46"/></clipPath></defs>
+          <g clip-path="url(#${k}-fc)" mask="url(#${k}-fm)">${img('hero.webp')}</g>`),
+      pins: svg(`<g class="pins">${STORY[k].decisions.map((d, n) => d[2] ? `<g class="pin-hit" data-pin="${n}"><circle class="ring" cx="${d[2][0]}" cy="${d[2][1]}" r="34"/><circle cx="${d[2][0]}" cy="${d[2][1]}" r="25"/><text x="${d[2][0]}" y="${d[2][1] + 9}" text-anchor="middle">${n + 1}</text></g>` : '').join('')}</g>`),
+    };
+    const card = document.createElement('div');
+    card.className = 'card';
+    card.setAttribute('role', 'group');
+    card.setAttribute('aria-roledescription', 'slide');
+    card.setAttribute('aria-label', `${m.name}, ${m.city}, ${m.year}`);
+    const rig = document.createElement('div');
+    rig.className = 'rig';
+    rig.innerHTML = '<div class="edge"></div>' +
+      Object.entries(planes).map(([p, s], n) => `<div class="plane${p === 'hero' ? ' lift' : ''}" data-plane="${p}" style="--z:${DEPTH[p]};--i:${n}">${s}</div>`).join('') +
+      '<div class="sheen"></div>';
+    card.appendChild(rig);
+    stage.appendChild(card);
+
+    const w = document.createElement('img');
+    w.src = `photos/${m.key}-bg.jpg`; w.alt = '';
+    wall.appendChild(w);
+    return { el: card, rig, wall: w };
+  });
+
+  /* ---------- page control ---------- */
+  const dots = MARVELS.map((m, i) => {
+    const b = document.createElement('button');
+    b.className = 'dot'; b.type = 'button'; b.setAttribute('role', 'tab');
+    b.setAttribute('aria-label', `${m.name}, ${m.year}`);
+    b.innerHTML = '<span></span>';
+    b.addEventListener('click', () => go(i));
+    $('pager').appendChild(b);
+    return b;
+  });
+
+  /* ---------- layout ---------- */
+  let cw = 800;
+  function layout() {
+    const r = stage.getBoundingClientRect();
+    const narrow = r.width < 720;
+    cw = Math.max(240, Math.min(r.width * (narrow ? .9 : .68), r.height * .8 * 1.6));
+    stage.style.setProperty('--cw', cw + 'px');
+    stage.style.setProperty('--ch', cw / 1.6 + 'px');
+    stage.style.setProperty('--u', cw / 1000);
+    stage.style.setProperty('--lift', r.height * .04 + 'px');
+    place();
+  }
+
+  /* ---------- navigation ---------- */
+  let cur = 0, drag = 0;
+  const platter = $('platter');
+  function place() {
+    cards.forEach(({ el }, i) => {
+      const o = i - cur, a = Math.abs(o);
+      el.classList.toggle('is-active', o === 0);
+      el.setAttribute('aria-hidden', o !== 0);
+      if (o === 0) {
+        el.style.transform = `translateX(${drag}px) rotateY(${drag / cw * 18}deg)`;
+        el.style.setProperty('--dx', (drag / cw).toFixed(3));
+        el.style.opacity = 1; el.style.zIndex = 3;
+      } else {
+        const x = o * cw * .86 + drag * .6;
+        el.style.transform = `translateX(${x}px) translateZ(${-cw * .32 * Math.min(a, 2)}px) rotateY(${-Math.sign(o) * 30}deg)`;
+        el.style.setProperty('--dx', 0);
+        el.style.opacity = a === 1 ? .5 : 0; el.style.zIndex = 2 - a;
+      }
+    });
+  }
+  function fill() {
+    const m = MARVELS[cur];
+    $('eyebrow').textContent = `${cur + 1} of ${MARVELS.length} · ${m.year}`;
+    $('name').textContent = m.name;
+    $('sub').textContent = m.city;
+    $('fact').textContent = m.fact;
+    $('year').textContent = m.year;
+    $('architect').textContent = m.architect;
+    $('coords').textContent = m.coords;
+    $('height').textContent = m.height;
+    $('credit').innerHTML = '';
+    const a = document.createElement('a');
+    a.href = m.credit.url; a.target = '_blank'; a.rel = 'noopener';
+    a.textContent = `Photo: ${m.credit.by}`;
+    $('credit').append(a, `, ${m.credit.lic}, via Wikimedia Commons. Cut into depth layers.`);
+    cards.forEach((c, i) => c.wall.classList.toggle('on', i === cur));
+    dots.forEach((d, i) => d.setAttribute('aria-current', i === cur));
+    $('prevBtn').disabled = cur === 0;
+    $('nextBtn').disabled = cur === MARVELS.length - 1;
+    renderStory(cur);
+    $('chips').innerHTML = STORY[m.key].decisions.map((d, n) => d[2] ? `<button type="button" class="nchip" data-n="${n}" aria-pressed="false" aria-label="${n + 1}: ${d[0]}" title="${d[0]}">${n + 1}</button>` : '').join('');
+    $('chips').querySelectorAll('button').forEach((b) => b.addEventListener('click', () => (openN === +b.dataset.n ? closePin() : openPin(+b.dataset.n))));
+  }
+  $('circBtn').addEventListener('click', () => jump('s-circulation'));
+  $('pinBtn').addEventListener('click', () => {
+    const on = stage.classList.toggle('no-pins');
+    if (on) closePin();
+    $('pinBtn').setAttribute('aria-pressed', String(!on));
+  });
+  function go(i) {
+    i = Math.max(0, Math.min(MARVELS.length - 1, i));
+    if (i === cur) { place(); return; }
+    closePin();
+    endBuild(false); hoverOn = false;
+    const from = MARVELS[cur].year, dir = Math.sign(i - cur);
+    cur = i;
+    place();
+    // the arriving card catches the light, and its year rolls on from the one you just left
+    const card = cards[i].el;
+    card.classList.remove('landing'); void card.offsetWidth; card.classList.add('landing');
+    setTimeout(() => card.classList.remove('landing'), 2000);
+    rollYear(i, from);
+    platter.style.setProperty('--sd', dir);
+    platter.classList.add('swap');
+    setTimeout(() => {
+      fill();
+      platter.classList.remove('swap'); platter.classList.add('enter');
+      requestAnimationFrame(() => requestAnimationFrame(() => platter.classList.remove('enter')));
+    }, 240);
+  }
+  let rollRaf = 0;
+  function rollYear(i, from) {
+    cancelAnimationFrame(rollRaf);
+    const yr = cards[i].rig.querySelector('.yr'), to = MARVELS[i].year;
+    if (reduced || from === to) { yr.textContent = to; return; }
+    const t0 = performance.now() + 200, dur = 900;
+    yr.textContent = from;
+    const step = (t) => {
+      if (cur !== i) { yr.textContent = to; return; }
+      const f = Math.min(1, Math.max(0, (t - t0) / dur)), e = 1 - Math.pow(1 - f, 3);
+      yr.textContent = Math.round(from + (to - from) * e);
+      if (f < 1) rollRaf = requestAnimationFrame(step);
+    };
+    rollRaf = requestAnimationFrame(step);
+  }
+  $('prevBtn').addEventListener('click', () => go(cur - 1));
+  $('nextBtn').addEventListener('click', () => go(cur + 1));
+  addEventListener('keydown', (e) => {
+    if (e.key === 'ArrowRight') go(cur + 1);
+    if (e.key === 'ArrowLeft') go(cur - 1);
+  });
+
+  // swipe with finger or mouse drag
+  let down = null;
+  stage.addEventListener('pointerdown', (e) => {
+    if (e.target.closest('button, .callout')) return;
+    down = { x: e.clientX, id: e.pointerId, pin: e.target.closest('[data-pin]')?.dataset.pin };
+    stage.setPointerCapture(e.pointerId);
+    stage.classList.add('grabbing');
+    cards[cur].el.classList.add('dragging');
+  });
+  stage.addEventListener('pointermove', (e) => {
+    if (!down || e.pointerId !== down.id) return;
+    const dx = e.clientX - down.x;
+    drag = dx * ((cur === 0 && dx > 0) || (cur === MARVELS.length - 1 && dx < 0) ? .3 : 1);
+    place();
+  });
+  const end = () => {
+    if (!down) return;
+    cards[cur].el.classList.remove('dragging');
+    stage.classList.remove('grabbing');
+    const d = drag, pin = down.pin; drag = 0; down = null;
+    if (pin != null && Math.abs(d) < 6) { place(); openPin(+pin); return; }
+    if (d < -60) go(cur + 1); else if (d > 60) go(cur - 1); else place();
+  };
+
+  /* ---------- annotation callout: tap a pin, or a number in the label ---------- */
+  const callout = document.createElement('div');
+  callout.className = 'callout glass';
+  callout.setAttribute('role', 'dialog');
+  callout.setAttribute('aria-label', 'Design decision');
+  callout.hidden = true;
+  stage.appendChild(callout);
+  let openN = -1;
+  function pinned() { return STORY[MARVELS[cur].key].decisions.map((d, n) => [d, n]).filter(([d]) => d[2]); }
+  function openPin(n) {
+    const d = STORY[MARVELS[cur].key].decisions[n];
+    const list = pinned(), at = list.findIndex(([, k]) => k === n);
+    openN = n;
+    callout.innerHTML = `<div class="co-top"><b>${n + 1}</b><h3>${d[0]}</h3><button type="button" class="co-x" aria-label="Close">✕</button></div>
+      ${imr(d[1])}
+      <div class="co-act">
+        <button type="button" class="capsule glass" data-act="story">Read in the story</button>
+        ${d[3] ? `<button type="button" class="capsule glass" data-act="rel">See ${LINKNAME[d[3]]}</button>` : ''}
+        <span class="co-nav"><button type="button" class="capsule glass" data-act="prev" aria-label="Previous annotation" ${at <= 0 ? 'disabled' : ''}>‹</button><button type="button" class="capsule glass" data-act="next" aria-label="Next annotation" ${at >= list.length - 1 ? 'disabled' : ''}>›</button></span>
+      </div>`;
+    callout.hidden = false;
+    stage.querySelectorAll('.pin-hit').forEach((g) => g.classList.toggle('on', +g.dataset.pin === n && g.closest('.card').classList.contains('is-active')));
+    $('chips').querySelectorAll('button').forEach((b) => b.setAttribute('aria-pressed', String(+b.dataset.n === n)));
+    callout.querySelector('.co-x').focus({ preventScroll: true });
+    const r = stage.getBoundingClientRect();
+    if (r.top < 0 || r.bottom > innerHeight) stage.scrollIntoView({ behavior: reduced ? 'auto' : 'smooth', block: 'nearest' });
+  }
+  function closePin() {
+    callout.hidden = true; openN = -1;
+    stage.querySelectorAll('.pin-hit.on').forEach((g) => g.classList.remove('on'));
+    $('chips')?.querySelectorAll('button').forEach((b) => b.setAttribute('aria-pressed', 'false'));
+  }
+  callout.addEventListener('click', (e) => {
+    const b = e.target.closest('button');
+    if (!b) return;
+    if (b.classList.contains('co-x')) return closePin();
+    const list = pinned(), at = list.findIndex(([, k]) => k === openN);
+    const d = STORY[MARVELS[cur].key].decisions[openN];
+    if (b.dataset.act === 'story') { const n = openN; closePin(); jump('d-' + n, true); }
+    if (b.dataset.act === 'rel') { closePin(); jump('s-' + d[3], true); }
+    if (b.dataset.act === 'prev' && at > 0) openPin(list[at - 1][1]);
+    if (b.dataset.act === 'next' && at < list.length - 1) openPin(list[at + 1][1]);
+  });
+  addEventListener('keydown', (e) => { if (e.key === 'Escape' && openN >= 0) closePin(); });
+
+  /* ---------- construction sequence: hover the building (or press Construction) ---------- */
+  const STAGES = [['Design', 'plan', 1500], ['Structure', 'struct', 1800], ['Envelope', 'skin', 1800], ['Finished', 'finish', 900]];
+  const bcap = document.createElement('div');
+  bcap.className = 'bcap glass';
+  bcap.setAttribute('aria-live', 'polite');
+  bcap.hidden = true;
+  bcap.innerHTML = `<div class="bsteps">${STAGES.map(() => '<i></i>').join('')}</div><div class="btxt"><b></b><span></span></div><em></em>`;
+  stage.appendChild(bcap);
+  let bld = null;
+  const easeIO = (t) => (t < .5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2);
+  function buildParts(i) {
+    const r = cards[i].rig;
+    return { cl: r.querySelector('.b-cl'), cs: r.querySelector('.b-cs'), ck: r.querySelector('.b-ck'), lines: r.querySelector('.b-lines'), grid: r.querySelector('.b-grid'),
+      fore: r.querySelector('[data-plane="fore"]'), pins: r.querySelector('[data-plane="pins"]'), yr: r.querySelector('.yr'), ground: BUILD[MARVELS[i].key].ground };
+  }
+  function wipe(rect, f, ground) { const y = ground - f * (ground + 600); rect.setAttribute('y', y.toFixed(1)); rect.setAttribute('height', (ground - y).toFixed(1)); }
+  function paintBuild(P, s) {
+    wipe(P.cl, s.plan, P.ground); wipe(P.cs, s.struct, P.ground); wipe(P.ck, s.skin, P.ground);
+    P.lines.setAttribute('opacity', (s.plan * (1 - s.skin)).toFixed(3));
+    P.grid.setAttribute('opacity', (Math.min(1, s.plan * 2) * (1 - s.skin) * .9).toFixed(3));
+    P.fore.style.opacity = s.finish; P.pins.style.opacity = s.finish;
+  }
+  function caption(i, k) {
+    const m = MARVELS[i], s = STORY[m.key], b = BUILD[m.key], [name, key] = STAGES[k];
+    bcap.querySelector('b').textContent = `${k + 1} · ${name}`;
+    bcap.querySelector('span').textContent = b[key];
+    bcap.querySelector('em').textContent = key === 'plan' ? s.designed : key === 'struct' ? `from ${s.built[0]}` : key === 'skin' ? `by ${s.built[1]}` : m.year;
+    bcap.querySelectorAll('.bsteps i').forEach((el, n) => el.className = n < k ? 'done' : n === k ? 'now' : '');
+  }
+  function startBuild() {
+    if (bld || openN >= 0 || down) return;
+    const i = cur, P = buildParts(i), m = MARVELS[i], s = STORY[m.key];
+    bld = { i, P, k: 0, t0: performance.now(), raf: 0 };
+    paintBuild(P, { plan: 0, struct: 0, skin: 0, finish: 0 });
+    P.yr.textContent = s.designed;
+    stage.classList.add('building');
+    bcap.hidden = false; caption(i, 0);
+    const tick = (now) => {
+      if (!bld || bld.i !== i) return;
+      const [, key, dur] = STAGES[bld.k];
+      let f = reduced ? 1 : Math.min(1, (now - bld.t0) / dur);
+      const e = easeIO(f);
+      const st = { plan: 1, struct: 1, skin: 1, finish: 1 };
+      const order = STAGES.map((x) => x[1]);
+      order.forEach((o, n) => { st[o] = n < bld.k ? 1 : n === bld.k ? e : 0; });
+      paintBuild(P, st);
+      // the big year counts up while the building goes up
+      const span = m.year - s.designed;
+      const prog = key === 'plan' ? 0 : key === 'struct' ? e * .5 : key === 'skin' ? .5 + e * .5 : 1;
+      P.yr.textContent = Math.round(s.designed + span * prog);
+      const hold = reduced ? 1300 : 0;
+      if (f >= 1 && now - bld.t0 >= dur + hold) {
+        if (bld.k === STAGES.length - 1) return endBuild(true);
+        bld.k++; bld.t0 = now; caption(i, bld.k);
+      }
+      bld.raf = requestAnimationFrame(tick);
+    };
+    bld.raf = requestAnimationFrame(tick);
+  }
+  function endBuild(natural) {
+    if (!bld) return;
+    cancelAnimationFrame(bld.raf);
+    const { P, i } = bld;
+    paintBuild(P, { plan: 0, struct: 0, skin: 1, finish: 1 });
+    P.yr.textContent = MARVELS[i].year;
+    bld = null;
+    stage.classList.remove('building');
+    if (natural) { caption(i, STAGES.length - 1); bcap.querySelectorAll('.bsteps i').forEach((el) => el.className = 'done'); setTimeout(() => { if (!bld) bcap.hidden = true; }, 1800); }
+    else bcap.hidden = true;
+  }
+  // hover over the building for a moment to watch it go up; leaving finishes it at once
+  let hoverOn = false, dwell = 0;
+  const overCard = (e) => { const r = cards[cur].el.getBoundingClientRect(); return e.clientX > r.left && e.clientX < r.right && e.clientY > r.top && e.clientY < r.bottom && !e.target.closest('.callout, .nav'); };
+  stage.addEventListener('pointermove', (e) => {
+    if (e.pointerType !== 'mouse' || down) return;
+    const over = overCard(e);
+    if (over && !hoverOn) { hoverOn = true; clearTimeout(dwell); dwell = setTimeout(startBuild, 350); }
+    else if (!over && hoverOn) { hoverOn = false; clearTimeout(dwell); endBuild(false); }
+  });
+  stage.addEventListener('pointerleave', () => { hoverOn = false; clearTimeout(dwell); endBuild(false); });
+  $('buildBtn').addEventListener('click', () => { endBuild(false); if (stage.getBoundingClientRect().top < 0) stage.scrollIntoView({ behavior: reduced ? 'auto' : 'smooth' }); startBuild(); });
+  stage.addEventListener('pointerup', end);
+  stage.addEventListener('pointercancel', end);
+
+  // two-finger trackpad swipe
+  let wheelAcc = 0, wheelLock = 0;
+  addEventListener('wheel', (e) => {
+    if (Math.abs(e.deltaX) <= Math.abs(e.deltaY)) return;
+    e.preventDefault();
+    const t = performance.now();
+    if (t < wheelLock) return;
+    wheelAcc += e.deltaX;
+    if (Math.abs(wheelAcc) > 70) { go(cur + (wheelAcc > 0 ? 1 : -1)); wheelAcc = 0; wheelLock = t + 650; }
+  }, { passive: false });
+
+  /* ---------- motion: pointer, device tilt, camera lid tilt, idle drift ---------- */
+  const MAX = reduced ? 5 : 14;
+  const target = { x: 0, y: 0 }, now = { x: 0, y: 0 };
+  let lastInput = -1e9, source = 'pointer';
+  const clamp = (v) => Math.max(-1, Math.min(1, v));
+  const setSource = (s) => { if (source !== s) { source = s; $('sourceName').textContent = s; } };
+
+  addEventListener('pointermove', (e) => {
+    if (down || source === 'lid tilt') return;
+    target.x = (e.clientX / innerWidth - .5) * 2;
+    target.y = (e.clientY / innerHeight - .5) * 2;
+    lastInput = performance.now();
+    setSource('pointer');
+  });
+
+  let base = null;
+  addEventListener('deviceorientation', (e) => {
+    if (e.gamma == null || source === 'lid tilt') return;
+    if (!base) base = { b: e.beta, g: e.gamma };
+    target.x = clamp((e.gamma - base.g) / 22);
+    target.y = clamp((e.beta - base.b) / 22);
+    lastInput = performance.now();
+    setSource('device tilt');
+  });
+
+  function frameLoop(t) {
+    if (source !== 'lid tilt' && t - lastInput > 2500 && !reduced) {
+      target.x = Math.sin(t / 2400) * .38;
+      target.y = Math.cos(t / 3100) * .22;
+      if (source !== 'drift') setSource('drift');
+    }
+    if (source === 'lid tilt') camStep();
+    const k = reduced ? .06 : .085;
+    now.x += (target.x - now.x) * k;
+    now.y += (target.y - now.y) * k;
+    const { rig } = cards[cur];
+    rig.style.transform = `rotateX(${(now.y * MAX).toFixed(2)}deg) rotateY(${(-now.x * MAX).toFixed(2)}deg)`;
+    rig.style.setProperty('--sx', (50 + now.x * 45).toFixed(1) + '%');
+    rig.style.setProperty('--sy', (40 + now.y * 45).toFixed(1) + '%');
+    cards.forEach((c, i) => { if (i !== cur && c.rig.style.transform) c.rig.style.transform = ''; });
+    requestAnimationFrame(frameLoop);
+  }
+
+  /* Lid tilt: laptops have no tilt sensor, so the webcam stands in for one.
+     When the lid moves, the whole room slides in the camera image. We compare the
+     edge profile of each frame's rows and columns against a reference frame and
+     read the shift as screen tilt. Edges (brightness changes), not raw brightness,
+     so the webcam re-exposing as the lid moves doesn't throw the reading off.
+     Nothing leaves the page. */
+  const CW = 96, CH = 72, MAXS = 24;
+  const FOV_X = 60, FOV_Y = 45;   // typical laptop webcam field of view, degrees
+  const FULL_TILT = 6;            // degrees of lid movement that give the card its full tilt
+  const cam = { stream: null, video: null, ctx: null, ref: null, sx: 0, sy: 0, frame: 0, bad: 0, peak: 0, started: 0, hinted: false };
+  const prev = $('camPreview'), pctx = prev.getContext('2d');
+
+  function edges(a) {
+    // light smoothing, then first difference, then normalise
+    const n = a.length, sm = new Float32Array(n), d = new Float32Array(n - 1);
+    for (let i = 0; i < n; i++) sm[i] = (a[Math.max(0, i - 1)] + 2 * a[i] + a[Math.min(n - 1, i + 1)]) / 4;
+    for (let i = 0; i < n - 1; i++) d[i] = sm[i + 1] - sm[i];
+    let m = 0; for (const v of d) m += v; m /= d.length;
+    let s = 0; for (const v of d) s += (v - m) ** 2; s = Math.sqrt(s / d.length) || 1;
+    return d.map((v) => (v - m) / s);
+  }
+  function profiles() {
+    cam.ctx.drawImage(cam.video, 0, 0, CW, CH);
+    const img = cam.ctx.getImageData(0, 0, CW, CH), d = img.data;
+    const col = new Float32Array(CW), row = new Float32Array(CH);
+    for (let y = 0; y < CH; y++) for (let x = 0; x < CW; x++) {
+      const i = (y * CW + x) * 4, v = d[i] * .3 + d[i + 1] * .59 + d[i + 2] * .11;
+      col[x] += v; row[y] += v;
+    }
+    if (cam.frame % 4 === 0) pctx.drawImage(cam.video, 0, 0, prev.width, prev.height);
+    return { col: edges(col), row: edges(row) };
+  }
+  function bestShift(ref, cur) {
+    const errs = [];
+    let best = 0, bestE = Infinity;
+    for (let s = -MAXS; s <= MAXS; s++) {
+      let e = 0, n = 0;
+      for (let i = 0; i < ref.length; i++) { const j = i + s; if (j < 0 || j >= cur.length) continue; e += Math.abs(ref[i] - cur[j]); n++; }
+      e = n > ref.length * .4 ? e / n : Infinity; errs.push(e);
+      if (e < bestE) { bestE = e; best = s; }
+    }
+    const b = best + MAXS;
+    let off = 0;
+    if (b > 0 && b < errs.length - 1 && isFinite(errs[b - 1]) && isFinite(errs[b + 1])) {
+      const den = errs[b - 1] - 2 * errs[b] + errs[b + 1]; if (den > 1e-6) off = (errs[b - 1] - errs[b + 1]) / (2 * den);
+    }
+    return { s: best + off, e: bestE };
+  }
+  function camStep() {
+    if (!cam.video || cam.video.readyState < 2) return;
+    cam.frame++;
+    const p = profiles();
+    if (!cam.ref || cam.frame < 8) { cam.ref = p; return; }
+    const cx = bestShift(cam.ref.col, p.col), cy = bestShift(cam.ref.row, p.row);
+    // no good match for a while means the view really changed (someone walked past): start fresh
+    if (cx.e > 1.15 && cy.e > 1.15) { if (++cam.bad > 45) { cam.ref = p; cam.bad = 0; cam.sx = cam.sy = 0; } return; }
+    cam.bad = 0;
+    if (cx.e <= 1.15) cam.sx += (cx.s - cam.sx) * .45;
+    if (cy.e <= 1.15) cam.sy += (cy.s - cam.sy) * .45;
+    const degX = cam.sx / (CW - 1) * FOV_X, degY = cam.sy / (CH - 1) * FOV_Y;
+    target.x = clamp(degX / FULL_TILT);
+    target.y = clamp(degY / FULL_TILT);
+    cam.peak = Math.max(cam.peak, Math.abs(degX), Math.abs(degY));
+    if (cam.frame % 6 === 0) $('sourceName').textContent = `lid tilt ${degY >= 0 ? '↓' : '↑'}${Math.abs(degY).toFixed(1)}° ${degX >= 0 ? '→' : '←'}${Math.abs(degX).toFixed(1)}°`;
+    if (!cam.hinted && performance.now() - cam.started > 7000 && cam.peak < 1) {
+      cam.hinted = true;
+      $('camNote').textContent = 'No movement picked up yet. Tilt the lid a little further, or turn on a light: the camera needs to see some detail in the room.';
+    }
+  }
+  async function startCam() {
+    const note = $('camNote');
+    try {
+      if (!navigator.mediaDevices?.getUserMedia) throw new Error('none');
+      cam.stream = await navigator.mediaDevices.getUserMedia({ video: { width: { ideal: 160 }, height: { ideal: 120 }, facingMode: 'user' }, audio: false });
+      cam.video = document.createElement('video');
+      cam.video.muted = true; cam.video.playsInline = true; cam.video.srcObject = cam.stream;
+      await cam.video.play();
+      const c = document.createElement('canvas'); c.width = CW; c.height = CH;
+      cam.ctx = c.getContext('2d', { willReadFrequently: true });
+      Object.assign(cam, { ref: null, frame: 0, sx: 0, sy: 0, bad: 0, peak: 0, started: performance.now(), hinted: false });
+      setSource('lid tilt');
+      $('camBtn').setAttribute('aria-pressed', 'true');
+      $('camLabel').textContent = 'Stop lid tilt';
+      prev.hidden = false; $('recenterBtn').hidden = false;
+      note.hidden = false;
+      note.textContent = 'Hold the screen where it feels neutral, then tilt the lid back and forth. The reading shows in the depth chip. The camera image never leaves this page.';
+    } catch (err) {
+      cam.stream?.getTracks().forEach((t) => t.stop());
+      cam.stream = null;
+      note.hidden = false;
+      const live = 'https://snehabaid1998-byte.github.io/spatial-marvels/';
+      const name = err && err.name;
+      if (window.self !== window.top && (name === 'NotAllowedError' || name === 'SecurityError' || !navigator.mediaDevices)) {
+        note.innerHTML = `This viewer doesn’t allow camera access. Open the <a href="${live}" target="_blank" rel="noopener">live site</a> in Chrome to use lid tilt.`;
+      } else if (name === 'NotAllowedError') {
+        note.textContent = 'Chrome blocked the camera. Click the camera icon at the right end of the address bar, choose Allow, reload, then press Sense lid tilt again.';
+      } else if (name === 'NotFoundError' || name === 'OverconstrainedError') {
+        note.textContent = 'No camera was found on this device. Pointer and trackpad still drive the depth.';
+      } else if (name === 'NotReadableError') {
+        note.textContent = 'The camera is in use by another app, such as Zoom or Teams. Close it and try again.';
+      } else if (!window.isSecureContext) {
+        note.innerHTML = `Chrome only allows the camera on secure pages. Open the <a href="${live}" target="_blank" rel="noopener">live site</a> instead.`;
+      } else {
+        note.textContent = `The camera couldn’t start${name ? ` (${name})` : ''}. Pointer and trackpad still drive the depth.`;
+      }
+    }
+  }
+  function stopCam() {
+    cam.stream?.getTracks().forEach((t) => t.stop());
+    Object.assign(cam, { stream: null, video: null, ref: null });
+    $('camBtn').setAttribute('aria-pressed', 'false');
+    $('camLabel').textContent = 'Sense lid tilt';
+    prev.hidden = true; $('recenterBtn').hidden = true; $('camNote').hidden = true;
+    target.x = target.y = 0; lastInput = performance.now();
+    setSource('pointer');
+  }
+  $('camBtn').addEventListener('click', () => (cam.stream ? stopCam() : startCam()));
+  $('recenterBtn').addEventListener('click', () => { Object.assign(cam, { ref: null, frame: 0, sx: 0, sy: 0, bad: 0 }); });
+
+  addEventListener('resize', layout);
+  // a link ending in #sydney (or any building key) opens on that building
+  const start = MARVELS.findIndex((m) => '#' + m.key === location.hash);
+  if (start > 0) cur = start;
+  layout();
+  fill();
+  requestAnimationFrame(frameLoop);
+})();
+</script>
+
+</body></html>
