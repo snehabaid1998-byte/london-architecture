@@ -79,12 +79,40 @@ body {
   font: 600 13px/1 var(--sf); color: var(--label);
 }
 .capsule:hover { background: rgba(80, 80, 90, .5); }
-.capsule[aria-pressed="true"] { background: var(--tint); border-color: transparent; }
+.capsule[aria-pressed="true"], .capsule.primary { background: var(--tint); border-color: transparent; }
 .capsule svg { width: 15px; height: 15px; }
 .capsule:focus-visible, .nav:focus-visible, .dot:focus-visible, .credit a:focus-visible { outline: 3px solid rgba(122,162,255,.7); outline-offset: 2px; }
 #camPreview { width: 24px; height: 18px; border-radius: 4px; }
 .note a { color: #7aa2ff; }
 .note { flex-basis: 100%; margin: 0; font-size: 13px; color: var(--label-2); text-align: right; }
+
+/* scan a building: camera view, a reticle, and a sheet with the answer */
+.scan { position: fixed; inset: 0; z-index: 60; background: #000; overflow: hidden; }
+.scan video, .scan > img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.scan-top { position: absolute; left: 16px; right: 16px; top: max(16px, env(safe-area-inset-top)); display: flex; gap: 10px; align-items: center; }
+.scan-top .capsule { width: 36px; height: 36px; padding: 0; justify-content: center; border-radius: 50%; font-size: 15px; }
+.scan-hint { flex: 1; min-height: 36px; display: flex; align-items: center; padding: 6px 14px; border-radius: 18px; font-size: 14px; color: var(--label); }
+.reticle { position: absolute; left: 50%; top: 42%; width: min(62vw, 340px); aspect-ratio: 3 / 4; transform: translate(-50%, -50%); pointer-events: none; }
+.reticle i { position: absolute; width: 34px; height: 34px; border: 3px solid rgba(255,255,255,.9); }
+.reticle i:nth-child(1) { left: 0; top: 0; border-right: 0; border-bottom: 0; border-radius: 14px 0 0 0; }
+.reticle i:nth-child(2) { right: 0; top: 0; border-left: 0; border-bottom: 0; border-radius: 0 14px 0 0; }
+.reticle i:nth-child(3) { left: 0; bottom: 0; border-right: 0; border-top: 0; border-radius: 0 0 0 14px; }
+.reticle i:nth-child(4) { right: 0; bottom: 0; border-left: 0; border-top: 0; border-radius: 0 0 14px 0; }
+.scan.locked .reticle i { border-color: #7aa2ff; }
+.scan-sheet { position: absolute; left: 12px; right: 12px; bottom: max(12px, env(safe-area-inset-bottom)); max-width: 520px; margin: 0 auto; padding: 14px 16px 16px; border-radius: 26px; }
+.scan-result:empty { display: none; }
+.scan-result { margin-bottom: 12px; font-size: 15px; line-height: 1.4; color: var(--label); }
+.scan-result b { display: block; font-size: 19px; margin-bottom: 2px; }
+.scan-result p { margin: 4px 0 0; color: var(--label-2); font-size: 14px; }
+.scan-result .soon { display: inline-block; margin-bottom: 6px; padding: 3px 10px; border-radius: 10px; background: rgba(122,162,255,.22); color: #c9d8ff; font-size: 12px; font-weight: 600; }
+.scan-result .capsule { margin-top: 10px; }
+.scan-row { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 10px; }
+.scan-photo { justify-self: start; position: relative; overflow: hidden; }
+.scan-photo input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+.shutter { width: 68px; height: 68px; border-radius: 50%; border: 4px solid #fff; background: transparent; padding: 4px; cursor: pointer; }
+.shutter span { display: block; width: 100%; height: 100%; border-radius: 50%; background: #fff; transition: transform .15s; }
+.shutter:active span { transform: scale(.88); }
+.shutter:focus-visible { outline: 3px solid rgba(122,162,255,.8); outline-offset: 3px; }
 
 /* stage + depth cards */
 .stage {
@@ -438,6 +466,7 @@ button, input, select, textarea { font-family: inherit; }
       <span>Standing in front of a London landmark? Get its story in 30 seconds.</span>
     </div>
     <div class="controls">
+      <button class="capsule glass primary" id="scanBtn" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 8V5a2 2 0 0 1 2-2h3M16 3h3a2 2 0 0 1 2 2v3M21 16v3a2 2 0 0 1-2 2h-3M8 21H5a2 2 0 0 1-2-2v-3"/><path d="M9 17V9l3-2 3 2v8M7 17h10"/></svg>Scan a building</button>
       <span class="status glass"><i></i>Depth from <b id="sourceName">pointer</b></span>
       <button class="capsule glass" id="camBtn" type="button" aria-pressed="false">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="12" rx="2"/><path d="M8 21h8M12 17v4"/></svg>
@@ -454,6 +483,23 @@ button, input, select, textarea { font-family: inherit; }
     </div>
     <p class="note" id="camNote" hidden></p>
   </header>
+  <div class="scan" id="scan" role="dialog" aria-modal="true" aria-label="Scan a building" hidden>
+    <video id="scanVideo" muted playsinline></video>
+    <img id="scanPhoto" alt="" hidden>
+    <div class="scan-top">
+      <button class="capsule glass" id="scanClose" type="button" aria-label="Close scanner">✕</button>
+      <span class="scan-hint glass" id="scanHint" aria-live="polite">Point your phone at a building</span>
+    </div>
+    <div class="reticle" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
+    <div class="scan-sheet glass">
+      <div class="scan-result" id="scanResult" aria-live="polite"></div>
+      <div class="scan-row">
+        <label class="capsule glass scan-photo">Use a photo<input type="file" id="scanFile" accept="image/jpeg,image/heic,image/*"></label>
+        <button class="shutter" id="scanShutter" type="button" aria-label="Scan this building"><span></span></button>
+        <span class="scan-gap"></span>
+      </div>
+    </div>
+  </div>
 
   <section class="stage" id="stage" aria-roledescription="carousel" aria-label="Building cards">
     <button class="nav prev glass" id="prevBtn" type="button" aria-label="Previous building">
@@ -1300,6 +1346,138 @@ button, input, select, textarea { font-family: inherit; }
     }, { enableHighAccuracy: true, timeout: 12000, maximumAge: 60000 });
   });
 
+  /* ---------- scan a building ----------
+     No image recognition: where you stand (GPS) plus which way the camera faces (compass)
+     says which building is in the frame. A photo works the same way, from the location and
+     direction your camera writes into the file. A building we don't cover yet gets a
+     "coming soon" note rather than a wrong answer. */
+  const scan = { stream: null, watch: null, me: null, acc: null, heading: null, last: null };
+  const bearing = ([a, b], [c, d]) => { const r = Math.PI / 180, y = Math.sin((d - b) * r) * Math.cos(c * r), x = Math.cos(a * r) * Math.sin(c * r) - Math.sin(a * r) * Math.cos(c * r) * Math.cos((d - b) * r); return (Math.atan2(y, x) / r + 360) % 360; };
+  const turn = (to, from) => ((to - from + 540) % 360) - 180;
+  const side = (deg) => Math.abs(deg) < 20 ? 'ahead' : Math.abs(deg) > 135 ? 'behind you' : deg > 0 ? 'to your right' : 'to your left';
+  // which guide building sits in the frame, if any
+  function identify(me, heading) {
+    const list = MARVELS.map((m, i) => { const p = geo(m.coords); return { i, km: distKm(me, p), brg: bearing(me, p) }; }).sort((a, b) => a.km - b.km);
+    if (list[0].km > 25) return { far: true, list };
+    if (list[0].km < .07) return { hit: list[0], list };
+    if (heading == null) return { list, noHeading: true };
+    // a building fills more of the view the closer you are, so the cone widens up close
+    const hit = list.find((c) => c.km < 2.5 && Math.abs(turn(c.brg, heading)) <= Math.max(9, Math.atan(.1 / c.km) * 180 / Math.PI));
+    return { hit, list };
+  }
+  const sheet = (html) => { $('scanResult').innerHTML = html; $('scanResult').querySelectorAll('[data-open]').forEach((b) => b.addEventListener('click', () => openFromScan(+b.dataset.open))); };
+  function openFromScan(i) { closeScan(); go(i); const n = $('camNote'); n.hidden = false; n.textContent = `Scanned: ${MARVELS[i].name}. Here’s its story.`; }
+  function showResult(r, heading) {
+    if (r.far) {
+      const c = r.list[0];
+      return sheet(`<span class="soon">Coming soon</span><b>We’re working on adding this one soon</b><p>The guide covers ten London landmarks so far, and this building isn’t one of them yet. The nearest one is ${MARVELS[c.i].name}, ${fmtDist(c.km)} away.</p><button type="button" class="capsule glass" data-open="${c.i}">See ${MARVELS[c.i].name}</button>`);
+    }
+    if (r.hit) {
+      const m = MARVELS[r.hit.i];
+      return sheet(`<b>${m.name}</b>${m.architect}, ${m.year} · ${fmtDist(r.hit.km)} away<p>${GLANCE[m.key].idea}</p><button type="button" class="capsule glass primary" data-open="${r.hit.i}">Open its story</button>`);
+    }
+    if (r.noHeading) {
+      const c = r.list[0];
+      return sheet(`<b>Can’t tell which way you’re facing</b><p>This device has no compass reading, so scan works only when you’re right at a building. The closest in the guide is ${MARVELS[c.i].name}, ${fmtDist(c.km)} away.</p><button type="button" class="capsule glass" data-open="${c.i}">See ${MARVELS[c.i].name}</button>`);
+    }
+    const near = r.list.filter((c) => c.km < 2.5).slice(0, 2);
+    sheet(`<span class="soon">Coming soon</span><b>We’re working on adding this one soon</b><p>This building isn’t in the guide yet.${near.length ? ` In the guide nearby: ${near.map((c) => `${MARVELS[c.i].name}, ${fmtDist(c.km)} ${side(turn(c.brg, heading))}`).join('; ')}.` : ''}</p>${near.length ? `<button type="button" class="capsule glass" data-open="${near[0].i}">See ${MARVELS[near[0].i].name}</button>` : ''}`);
+  }
+  // live: tell the user what's in the frame as they turn
+  function liveHint() {
+    if (!scan.me) return;
+    const r = identify(scan.me, scan.heading);
+    $('scan').classList.toggle('locked', !!r.hit);
+    $('scanHint').textContent = r.far ? 'Scan works in London. Tap the shutter to see what’s covered.'
+      : r.hit ? `${MARVELS[r.hit.i].name} is in the frame. Tap to scan.`
+      : r.noHeading ? 'No compass on this device. Tap the shutter to check where you are.'
+      : 'Point your phone at a building';
+  }
+  function onHeading(e) {
+    let h = e.webkitCompassHeading;
+    if (h == null && e.absolute && e.alpha != null) h = 360 - e.alpha;
+    if (h == null) return;
+    scan.heading = (h + (screen.orientation?.angle || 0) + 360) % 360;
+    liveHint();
+  }
+  async function openScan() {
+    if (cam.stream) stopCam();
+    if (hand.on) stopHand();
+    // iOS asks for compass access, and only from inside the tap
+    try { if (typeof DeviceOrientationEvent !== 'undefined' && DeviceOrientationEvent.requestPermission) DeviceOrientationEvent.requestPermission().catch(() => {}); } catch (e) {}
+    Object.assign(scan, { me: null, heading: null });
+    $('scan').hidden = false; $('scanPhoto').hidden = true; $('scanVideo').hidden = false;
+    sheet(''); $('scanHint').textContent = 'Finding where you are…';
+    document.body.style.overflow = 'hidden';
+    $('scanClose').focus();
+    addEventListener('deviceorientationabsolute', onHeading);
+    addEventListener('deviceorientation', onHeading);
+    const framed = window.self !== window.top;
+    if (navigator.geolocation) scan.watch = navigator.geolocation.watchPosition((p) => { scan.me = [p.coords.latitude, p.coords.longitude]; liveHint(); },
+      () => { $('scanHint').textContent = framed ? 'This viewer blocks location. Use a photo, or open the live site on your phone.' : 'Location is off. Allow it to scan, or use a photo.'; },
+      { enableHighAccuracy: true, timeout: 15000, maximumAge: 5000 });
+    try {
+      scan.stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' } }, audio: false });
+      if ($('scan').hidden) return closeScan();
+      $('scanVideo').srcObject = scan.stream; await $('scanVideo').play();
+    } catch (e) { $('scanVideo').hidden = true; }
+  }
+  function closeScan() {
+    scan.stream?.getTracks().forEach((t) => t.stop()); scan.stream = null;
+    if (scan.watch != null) navigator.geolocation.clearWatch(scan.watch); scan.watch = null;
+    removeEventListener('deviceorientationabsolute', onHeading);
+    removeEventListener('deviceorientation', onHeading);
+    $('scan').hidden = true; $('scan').classList.remove('locked'); document.body.style.overflow = '';
+    $('scanBtn').focus({ preventScroll: true });
+  }
+  $('scanBtn').addEventListener('click', openScan);
+  $('scanClose').addEventListener('click', closeScan);
+  addEventListener('keydown', (e) => { if (e.key === 'Escape' && !$('scan').hidden) closeScan(); });
+  $('scanShutter').addEventListener('click', () => {
+    if (!scan.me) { sheet('<b>Still finding where you are</b><p>Give it a few seconds outdoors, or use a photo you took of the building.</p>'); return; }
+    showResult(identify(scan.me, scan.heading), scan.heading);
+  });
+  // a photo: read the location and camera direction the phone saved in it (EXIF GPS)
+  function exifGps(buf) {
+    const v = new DataView(buf);
+    if (v.getUint16(0) !== 0xFFD8) return null;
+    let o = 2;
+    while (o < v.byteLength - 4) {
+      const mk = v.getUint16(o), len = v.getUint16(o + 2);
+      if (mk === 0xFFE1 && v.getUint32(o + 4) === 0x45786966) {
+        const t = o + 10, le = v.getUint16(t) === 0x4949;
+        const u16 = (p) => v.getUint16(t + p, le), u32 = (p) => v.getUint32(t + p, le);
+        const tags = (ifd) => { const n = u16(ifd), out = {}; for (let k = 0; k < n; k++) { const e = ifd + 2 + k * 12; out[u16(e)] = { type: u16(e + 2), count: u32(e + 4), at: e + 8 }; } return out; };
+        const gpsPtr = tags(u32(4))[0x8825];
+        if (!gpsPtr) return null;
+        const g = tags(u32(gpsPtr.at));
+        const rat = (tag, k = 0) => { const off = u32(tag.at) + k * 8; return u32(off) / u32(off + 4); };
+        const ref = (tag) => String.fromCharCode(v.getUint8(t + tag.at));
+        if (!g[2] || !g[4]) return null;
+        const dms = (tag) => rat(tag, 0) + rat(tag, 1) / 60 + rat(tag, 2) / 3600;
+        const lat = dms(g[2]) * (g[1] && ref(g[1]) === 'S' ? -1 : 1), lon = dms(g[4]) * (g[3] && ref(g[3]) === 'W' ? -1 : 1);
+        return { me: [lat, lon], heading: g[17] ? rat(g[17]) : null };
+      }
+      if ((mk & 0xFF00) !== 0xFF00) break;
+      o += 2 + len;
+    }
+    return null;
+  }
+  $('scanFile').addEventListener('change', async (e) => {
+    const f = e.target.files[0]; e.target.value = '';
+    if (!f) return;
+    const img = $('scanPhoto');
+    if (img.src) URL.revokeObjectURL(img.src);
+    img.src = URL.createObjectURL(f); img.hidden = false; $('scanVideo').hidden = true;
+    let gps = null;
+    try { gps = exifGps(await f.arrayBuffer()); } catch (err) {}
+    if (!gps) { $('scan').classList.remove('locked'); sheet('<b>This photo has no location saved</b><p>Turn on location for your camera app and take it again, or scan live with the shutter.</p>'); return; }
+    const r = identify(gps.me, gps.heading);
+    $('scan').classList.toggle('locked', !!r.hit);
+    $('scanHint').textContent = 'From your photo';
+    showResult(r, gps.heading);
+  });
+
   $('circBtn').addEventListener('click', () => jump('s-circulation'));
   $('pinBtn').addEventListener('click', () => {
     const on = stage.classList.toggle('no-pins');
@@ -1854,5 +2032,6 @@ button, input, select, textarea { font-family: inherit; }
   requestAnimationFrame(frameLoop);
 })();
 </script>
+
 
 </body></html>

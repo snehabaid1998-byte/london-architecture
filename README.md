@@ -2,7 +2,7 @@
 
 **The problem:** you're standing in front of a London landmark, looking up, and you have no idea what you're looking at or why it looks that way. Signs, if there are any, give you a name and a date. Wikipedia gives you everything except the answer.
 
-**What this does:** tap **Nearest to me** and it opens the building you're standing at. In 30 seconds you get the essentials: who designed it, how big it is, the one big idea, a timeline, whether you can go in, and what to look for from where you're standing. If you want more, it goes as deep as you like: a 3D card you can tilt, the building rising from blueprint to opening day, every design decision as Intent → Move → Result, and how people move through it.
+**What this does:** tap **Scan a building** and point your phone at it, or tap **Nearest to me**, and it opens that building. In 30 seconds you get the essentials: who designed it, how big it is, the one big idea, a timeline, whether you can go in, and what to look for from where you're standing. If you want more, it goes as deep as you like: a 3D card you can tilt, the building rising from blueprint to opening day, every design decision as Intent → Move → Result, and how people move through it.
 
 It covers ten landmark commercial buildings, written for architecture students and curious visitors.
 
@@ -33,6 +33,7 @@ A companion to [Spatial Marvels](https://github.com/snehabaid1998-byte/spatial-m
 
 ## How to use it
 
+- **Scan a building:** point your phone's camera at a building and tap the shutter. It works out which building is in the frame from where you're standing (GPS) and which way the camera faces (compass); there's no image recognition, and nothing leaves your device. You can also pick a photo you took: the location and direction your camera saved in it do the same job. If the building isn't in the guide yet, you get a "we're working on adding this one soon" note and the guide buildings nearby.
 - **On the street:** press **Nearest to me** (your browser will ask for your location; it never leaves your device). The card under the building shows the 30-second version, plus **Can I go in?** and **Look for**. Access was checked in October 2026; hours and booking rules change, so check the venue before you go.
 - **Change building:** swipe, drag, use a two-finger trackpad swipe, press the arrow keys, or tap the page dots.
 - **Construction sequence:** hover over the building, or press **Construction ▶**.
